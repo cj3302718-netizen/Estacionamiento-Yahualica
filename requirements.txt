@@ -1,0 +1,8 @@
+streamlit
+pyodbc
+bcrypt
+qrcode[pil]
+pillow
+opencv-python-headless
+numpy
+pandas
