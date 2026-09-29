@@ -1,12 +1,16 @@
 import streamlit as st
 import json
 import re
+import os
+import tempfile
+import urllib.request
 import pandas as pd
 from datetime import datetime, date, timedelta
 from io import BytesIO
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+from fpdf import FPDF
 
 from db import (
     autenticar, crear_usuario, usuario_existe, contar_admins,
@@ -53,7 +57,7 @@ st.markdown("""
         background: #0f0508 !important;
     }
 
-    .titulo-principal { text-align: center; color: #C9A961; font-size: 1.8rem; font-weight: 800; margin-bottom: 0; }
+    .titulo-principal { text-align: center; color: #C9A961; font-size: 2rem; font-weight: 800; margin-bottom: 0; letter-spacing: 2px; }
     .subtitulo { text-align: center; color: #A89968; font-size: 0.9rem; margin-top: -8px; margin-bottom: 20px; }
 
     .panel-header { background: linear-gradient(135deg, #7B1B2E 0%, #D7192D 100%); padding: 14px 16px; border-radius: 12px; color: #FFFFFF; font-weight: 700; margin-bottom: 16px; font-size: 1.05rem; line-height: 1.3; box-shadow: 0 0 20px rgba(123, 27, 46, 0.4); }
@@ -128,7 +132,7 @@ st.markdown("""
         object-fit: cover;
     }
 
-    /* Marca CUDY con texto */
+    /* Marca CUYPARK con texto */
     .brand-cudy {
         display: flex;
         align-items: center;
@@ -200,7 +204,7 @@ def exportar_excel_profesional(df, titulo_reporte, subtitulo_extra=""):
     ws.row_dimensions[1].height = 24
 
     ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=total_cols)
-    sub_text = f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}  |  Colegio Universitario de Yahualica"
+    sub_text = f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}  |  CUYPARK — Colegio Universitario de Yahualica"
     if subtitulo_extra:
         sub_text += f"  |  {subtitulo_extra}"
     sub_cell = ws.cell(row=2, column=1, value=sub_text)
@@ -452,6 +456,183 @@ def limpiar_campos(keys):
             del st.session_state[k]
 
 
+# =========================================================
+# HELPER: GENERAR PDF DEL QR (CUYPARK)
+# =========================================================
+def generar_pdf_qr(user, vehiculo, qr_bytes):
+    """Genera un PDF profesional con el código QR del alumno."""
+
+    class PDF(FPDF):
+        def header(self):
+            # Fondo superior con barra vino
+            self.set_fill_color(123, 27, 46)  # #7B1B2E
+            self.rect(0, 0, 210, 28, "F")
+
+            # Escudo descargado desde GitHub
+            try:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as _f:
+                    _f.write(urllib.request.urlopen(LOGO_ESCUDO_URL, timeout=5).read())
+                    _logo_path = _f.name
+                self.image(_logo_path, x=10, y=4, w=20)
+                try:
+                    os.unlink(_logo_path)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+            # Texto de la institución
+            self.set_y(6)
+            self.set_x(35)
+            self.set_font("Helvetica", "B", 10)
+            self.set_text_color(201, 169, 97)  # #C9A961
+            self.cell(0, 5, "COLEGIO UNIVERSITARIO", ln=1, align="L")
+            self.set_x(35)
+            self.set_font("Helvetica", "B", 14)
+            self.cell(0, 6, "DE YAHUALICA", ln=1, align="L")
+
+            self.set_y(30)
+
+        def footer(self):
+            self.set_y(-18)
+            self.set_font("Helvetica", "I", 7)
+            self.set_text_color(130, 130, 130)
+            self.cell(0, 5, "CUYPARK — Sistema de Estacionamiento Inteligente", align="C", ln=1)
+            self.cell(0, 5, f"Documento generado el {datetime.now().strftime('%d/%m/%Y a las %H:%M')}", align="C")
+
+    pdf = PDF(orientation="P", unit="mm", format="A4")
+    pdf.add_page()
+
+    # --- TÍTULO ---
+    pdf.set_y(35)
+    pdf.set_font("Helvetica", "B", 22)
+    pdf.set_text_color(123, 27, 46)
+    pdf.cell(0, 10, "CUYPARK", ln=1, align="C")
+
+    pdf.set_font("Helvetica", "", 11)
+    pdf.set_text_color(100, 100, 100)
+    pdf.cell(0, 6, "Boleto Digital de Estacionamiento", ln=1, align="C")
+
+    pdf.ln(4)
+
+    # --- LÍNEA DECORATIVA ---
+    pdf.set_draw_color(201, 169, 97)
+    pdf.set_line_width(0.5)
+    pdf.line(60, pdf.get_y(), 150, pdf.get_y())
+    pdf.ln(6)
+
+    # --- DATOS DEL ALUMNO ---
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.set_text_color(123, 27, 46)
+    pdf.cell(0, 7, "Datos del Alumno", ln=1)
+
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(40, 40, 40)
+
+    pdf.cell(45, 6, "Nombre completo:", border=0)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(0, 6, str(user.get('nombre_completo') or 'N/A'), ln=1)
+
+    pdf.set_font("Helvetica", "", 10)
+    pdf.cell(45, 6, "ID Estudiante:", border=0)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(0, 6, str(user.get('id_estudiante') or 'N/A'), ln=1)
+
+    pdf.set_font("Helvetica", "", 10)
+    pdf.cell(45, 6, "Matrícula:", border=0)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(0, 6, str(user.get('matricula') or 'N/A'), ln=1)
+
+    pdf.set_font("Helvetica", "", 10)
+    pdf.cell(45, 6, "Carrera:", border=0)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(0, 6, str(user.get('carrera') or 'N/A'), ln=1)
+
+    pdf.set_font("Helvetica", "", 10)
+    pdf.cell(45, 6, "Grupo:", border=0)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(0, 6, str(user.get('grupo') or 'N/A'), ln=1)
+
+    pdf.ln(4)
+
+    # --- DATOS DEL VEHÍCULO ---
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.set_text_color(123, 27, 46)
+    pdf.cell(0, 7, "Datos del Vehículo", ln=1)
+
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(40, 40, 40)
+
+    pdf.cell(45, 6, "Tipo:", border=0)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(0, 6, str(vehiculo.get('tipo') or 'N/A'), ln=1)
+
+    pdf.set_font("Helvetica", "", 10)
+    pdf.cell(45, 6, "Placas:", border=0)
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.set_text_color(123, 27, 46)
+    pdf.cell(0, 6, str(vehiculo.get('placas') or 'N/A'), ln=1)
+
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_text_color(40, 40, 40)
+    pdf.cell(45, 6, "Marca:", border=0)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(0, 6, str(vehiculo.get('marca') or 'N/A'), ln=1)
+
+    pdf.set_font("Helvetica", "", 10)
+    pdf.cell(45, 6, "Modelo:", border=0)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(0, 6, str(vehiculo.get('modelo') or 'N/A'), ln=1)
+
+    pdf.set_font("Helvetica", "", 10)
+    pdf.cell(45, 6, "Color:", border=0)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(0, 6, str(vehiculo.get('color') or 'N/A'), ln=1)
+
+    pdf.ln(8)
+
+    # --- QR ---
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.set_text_color(123, 27, 46)
+    pdf.cell(0, 7, "Código QR de Acceso", ln=1, align="C")
+
+    # Guardamos el QR en temporal
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+        tmp.write(qr_bytes)
+        tmp_path = tmp.name
+
+    # Marco decorativo dorado
+    qr_size = 90
+    qr_x = (210 - qr_size) / 2
+    qr_y = pdf.get_y() + 3
+
+    pdf.set_draw_color(201, 169, 97)
+    pdf.set_line_width(0.6)
+    pdf.rect(qr_x - 3, qr_y - 3, qr_size + 6, qr_size + 6)
+
+    pdf.image(tmp_path, x=qr_x, y=qr_y, w=qr_size, h=qr_size)
+
+    try:
+        os.unlink(tmp_path)
+    except Exception:
+        pass
+
+    pdf.set_y(qr_y + qr_size + 8)
+
+    # --- INSTRUCCIONES ---
+    pdf.set_font("Helvetica", "I", 9)
+    pdf.set_text_color(100, 100, 100)
+    pdf.multi_cell(
+        0, 5,
+        "Presenta este código QR en la caseta del estacionamiento tanto al entrar como al salir. "
+        "Puedes imprimirlo o mostrarlo desde tu dispositivo móvil.",
+        align="C"
+    )
+
+    # Devolvemos el PDF como bytes
+    return bytes(pdf.output())
+
+
 # --- ESTADO DE SESIÓN ---
 if 'usuario' not in st.session_state:
     st.session_state.usuario = None
@@ -520,7 +701,7 @@ def mostrar_logo_escudo(tamaño_px=44):
     """Escudo circular pequeño para la barra superior."""
     return f"""
         <div class="logo-barra">
-            <img src="{LOGO_ESCUDO_URL}" alt="CUDY">
+            <img src="{LOGO_ESCUDO_URL}" alt="CUYPARK">
         </div>
     """
 
@@ -534,7 +715,7 @@ def mostrar_marca_cudy():
                 <div class="linea2">DE YAHUALICA</div>
             </div>
             <div class="logo-barra" style="margin-right: 0;">
-                <img src="{LOGO_ESCUDO_URL}" alt="CUDY">
+                <img src="{LOGO_ESCUDO_URL}" alt="CUYPARK">
             </div>
         </div>
     """
@@ -705,7 +886,7 @@ def cerrar_sesion():
 def pantalla_login():
     mostrar_branding_login()
     st.markdown('<p class="titulo-principal">CUYPARK</p>', unsafe_allow_html=True)
-    st.markdown('<p class="subtitulo">Sistema de Estacionamiento Inteligente — CUY</p>', unsafe_allow_html=True)
+    st.markdown('<p class="subtitulo">Sistema de Estacionamiento Inteligente — CUDY</p>', unsafe_allow_html=True)
     mostrar_flash()
 
     if contar_admins() == 0:
@@ -1177,10 +1358,36 @@ def panel_alumno():
         st.markdown("---")
         st.markdown("### 🎫 Tu código QR")
         st.info("Presenta este código en la caseta al entrar y salir.")
-        st.image(qr_info['imagen'], caption=f"QR — {qr_info['vehiculo']['tipo']} {qr_info['vehiculo']['placas']}")
-        st.download_button("📥 Descargar QR", data=qr_info['imagen'],
-                           file_name=f"QR_{qr_info['vehiculo']['placas']}.png",
-                           mime="image/png", use_container_width=True)
+
+        col_qr1, col_qr2, col_qr3 = st.columns([1, 2, 1])
+        with col_qr2:
+            st.image(qr_info['imagen'], caption=f"QR — {qr_info['vehiculo']['tipo']} {qr_info['vehiculo']['placas']}")
+
+        col_dl1, col_dl2 = st.columns(2)
+
+        with col_dl1:
+            st.download_button(
+                "📥 Descargar PNG",
+                data=qr_info['imagen'],
+                file_name=f"QR_{qr_info['vehiculo']['placas']}.png",
+                mime="image/png",
+                use_container_width=True
+            )
+
+        with col_dl2:
+            try:
+                pdf_bytes = generar_pdf_qr(user, qr_info['vehiculo'], qr_info['imagen'])
+                st.download_button(
+                    "📄 Descargar PDF profesional",
+                    data=pdf_bytes,
+                    file_name=f"CUYPARK_{qr_info['vehiculo']['placas']}_{user['matricula'] or 'alumno'}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                    type="primary"
+                )
+            except Exception as e:
+                st.error(f"Error al generar el PDF: {e}")
+
         if st.button("❌ Cerrar QR", use_container_width=True):
             st.session_state.qr_generado = None
             st.rerun()
@@ -1882,7 +2089,6 @@ if st.session_state.usuario is not None:
     rol = st.session_state.usuario['rol']
     iconos = {'alumno': '🎓', 'trabajador': '👷', 'admin': '👑'}
 
-    # Barra superior: usuario (izq) | marca CUDY (der) | salir (extremo der)
     col_user, col_brand, col_salir = st.columns([3, 2, 1])
 
     with col_user:
