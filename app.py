@@ -27,15 +27,32 @@ from db import (
     actualizar_telefono_usuario
 )
 
-st.set_page_config(page_title="Estacionamiento Yahualica", page_icon="🅿️", layout="centered")
-
 # --- LOGOS (URLs directas desde GitHub) ---
 LOGO_COMPLETO_URL = "https://raw.githubusercontent.com/cj3302718-netizen/Estacionamiento-Yahualica/main/logo_completo.png"
 LOGO_ESCUDO_URL = "https://raw.githubusercontent.com/cj3302718-netizen/Estacionamiento-Yahualica/main/logo_escudo.png"
 
+st.set_page_config(
+    page_title="Estacionamiento CUDY",
+    page_icon=LOGO_ESCUDO_URL,
+    layout="centered"
+)
+
 # --- ESTILOS (Paleta universitaria: vino + dorado) ---
 st.markdown("""
 <style>
+    /* Fondo general con degradado vino oscuro */
+    .stApp {
+        background: radial-gradient(ellipse at top, #1a0a0f 0%, #0d0407 40%, #050203 100%) !important;
+    }
+
+    header[data-testid="stHeader"] {
+        background: rgba(0, 0, 0, 0) !important;
+    }
+
+    section[data-testid="stSidebar"] {
+        background: #0f0508 !important;
+    }
+
     .titulo-principal { text-align: center; color: #C9A961; font-size: 1.8rem; font-weight: 800; margin-bottom: 0; }
     .subtitulo { text-align: center; color: #A89968; font-size: 0.9rem; margin-top: -8px; margin-bottom: 20px; }
 
@@ -1083,7 +1100,7 @@ def panel_alumno():
                 fecha_entrada = h['hora_entrada'].strftime("%d/%m/%Y %H:%M") if h['hora_entrada'] else "N/A"
                 fecha_salida = h['hora_salida'].strftime("%d/%m/%Y %H:%M") if h['hora_salida'] else None
                 icono = "🚗" if h['tipo'] == 'Auto' else "🏍️"
-                estado_color = "#00ff88" if h['estado'] == 'DENTRO' else "#888"
+                estado_color = "#00ff88" if h['estado'] == 'DENTRO' else "#A89968"
                 estado_txt = "🟢 DENTRO" if h['estado'] == 'DENTRO' else "🔴 COMPLETADA"
 
                 if fecha_salida:
