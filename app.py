@@ -33,37 +33,115 @@ st.set_page_config(page_title="Estacionamiento Yahualica", page_icon="🅿️", 
 LOGO_COMPLETO_URL = "https://raw.githubusercontent.com/cj3302718-netizen/Estacionamiento-Yahualica/main/logo_completo.png"
 LOGO_ESCUDO_URL = "https://raw.githubusercontent.com/cj3302718-netizen/Estacionamiento-Yahualica/main/logo_escudo.png"
 
-# --- ESTILOS ---
+# --- ESTILOS (Paleta universitaria: vino + dorado) ---
 st.markdown("""
 <style>
-    .titulo-principal { text-align: center; color: #00f3ff; font-size: 1.8rem; font-weight: 800; margin-bottom: 0; }
-    .subtitulo { text-align: center; color: #888; font-size: 0.9rem; margin-top: -8px; margin-bottom: 20px; }
-    .panel-header { background: linear-gradient(135deg, #00d2ff 0%, #0072ff 100%); padding: 14px 16px; border-radius: 12px; color: #000; font-weight: 700; margin-bottom: 16px; font-size: 1.05rem; line-height: 1.3; }
-    .contador-card { background: #111; border: 2px solid #00f3ff; border-radius: 16px; padding: 14px; text-align: center; box-shadow: 0 0 15px rgba(0, 243, 255, 0.3); margin-bottom: 10px; }
-    .contador-card h4 { color: #888; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; margin: 0; }
-    .contador-card .numero { font-size: 1.6rem; font-weight: 800; color: #00f3ff; margin-top: 4px; }
-    .edit-form { background: #0a0a0a; border: 2px dashed #00f3ff; border-radius: 12px; padding: 16px; margin-top: 10px; }
-    .hist-item { background: #0d0d0d; border-left: 3px solid #00f3ff; border-radius: 8px; padding: 12px 14px; margin-bottom: 8px; }
-    .hist-duracion { color: #888; font-size: 0.8rem; }
-    .log-row { background: #0d0d0d; border-left: 3px solid #00f3ff; border-radius: 8px; padding: 10px 14px; margin-bottom: 8px; }
+    .titulo-principal { text-align: center; color: #C9A961; font-size: 1.8rem; font-weight: 800; margin-bottom: 0; }
+    .subtitulo { text-align: center; color: #A89968; font-size: 0.9rem; margin-top: -8px; margin-bottom: 20px; }
+
+    .panel-header { background: linear-gradient(135deg, #7B1B2E 0%, #D7192D 100%); padding: 14px 16px; border-radius: 12px; color: #FFFFFF; font-weight: 700; margin-bottom: 16px; font-size: 1.05rem; line-height: 1.3; box-shadow: 0 0 20px rgba(123, 27, 46, 0.4); }
+
+    .contador-card { background: #1a0a0f; border: 2px solid #C9A961; border-radius: 16px; padding: 14px; text-align: center; box-shadow: 0 0 15px rgba(201, 169, 97, 0.35); margin-bottom: 10px; }
+    .contador-card h4 { color: #A89968; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; margin: 0; }
+    .contador-card .numero { font-size: 1.6rem; font-weight: 800; color: #C9A961; margin-top: 4px; }
+
+    .edit-form { background: #0f0508; border: 2px dashed #C9A961; border-radius: 12px; padding: 16px; margin-top: 10px; }
+
+    .hist-item { background: #1a0a0f; border-left: 3px solid #C9A961; border-radius: 8px; padding: 12px 14px; margin-bottom: 8px; }
+    .hist-duracion { color: #A89968; font-size: 0.8rem; }
+
+    .log-row { background: #1a0a0f; border-left: 3px solid #C9A961; border-radius: 8px; padding: 10px 14px; margin-bottom: 8px; }
     .log-accion { font-weight: 700; font-size: 0.85rem; }
-    .log-fecha { color: #666; font-size: 0.75rem; }
-    .log-detalle { color: #ccc; font-size: 0.85rem; margin-top: 4px; }
+    .log-fecha { color: #A89968; font-size: 0.75rem; }
+    .log-detalle { color: #E8DFD0; font-size: 0.85rem; margin-top: 4px; }
+
     .ocupacion-label { display:flex; justify-content:space-between; font-size:0.88rem; margin-bottom: 4px; margin-top: 8px; }
-    .ocupacion-label b { color: #00f3ff; }
-    .kpi-card { background: linear-gradient(135deg, #0d0d0d 0%, #1a1a1a 100%); border: 1px solid rgba(0, 243, 255, 0.2); border-radius: 14px; padding: 14px 16px; text-align: center; }
-    .kpi-card .kpi-label { color: #888; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.8px; }
-    .kpi-card .kpi-value { font-size: 1.7rem; font-weight: 800; color: #fff; margin-top: 2px; }
+    .ocupacion-label b { color: #C9A961; }
+
+    .kpi-card { background: linear-gradient(135deg, #1a0a0f 0%, #2a1015 100%); border: 1px solid rgba(201, 169, 97, 0.35); border-radius: 14px; padding: 14px 16px; text-align: center; }
+    .kpi-card .kpi-label { color: #A89968; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.8px; }
+    .kpi-card .kpi-value { font-size: 1.7rem; font-weight: 800; color: #F5F0E8; margin-top: 2px; }
     .kpi-card .kpi-delta { font-size: 0.8rem; margin-top: 2px; }
     .delta-up { color: #00ff88; }
     .delta-down { color: #ff6666; }
-    .delta-neutral { color: #888; }
-    .bienvenida-card { background: linear-gradient(135deg, #003300 0%, #005500 100%); border: 2px solid #00ff88; border-radius: 16px; padding: 18px; text-align: center; margin-bottom: 16px; box-shadow: 0 0 20px rgba(0, 255, 136, 0.4); }
+    .delta-neutral { color: #A89968; }
+
+    .bienvenida-card { background: linear-gradient(135deg, #1a3a1a 0%, #2a5028 100%); border: 2px solid #00ff88; border-radius: 16px; padding: 18px; text-align: center; margin-bottom: 16px; box-shadow: 0 0 20px rgba(0, 255, 136, 0.3); }
     .bienvenida-card h3 { color: #00ff88; margin: 0; font-size: 1.1rem; }
     .bienvenida-card p { color: #ffffff; margin: 6px 0 0 0; font-size: 0.95rem; }
     .bienvenida-card .placas { color: #00ff88; font-weight: 800; font-size: 1.3rem; }
+
     .val-ok { color: #00ff88; font-size: 0.8rem; margin-top: -8px; margin-bottom: 8px; }
     .val-error { color: #ff5555; font-size: 0.8rem; margin-top: -8px; margin-bottom: 8px; }
+
+    /* Medallón del logo en login */
+    .logo-medallon {
+        display: inline-block;
+        background: radial-gradient(circle at 30% 30%, #FFFFFF 0%, #F5F0E8 60%, #E8DFD0 100%);
+        border-radius: 50%;
+        padding: 6px;
+        border: 3px solid #C9A961;
+        box-shadow: 0 0 30px rgba(201, 169, 97, 0.6), 0 0 60px rgba(123, 27, 46, 0.4);
+        margin-bottom: 16px;
+    }
+    .logo-medallon img {
+        width: 130px;
+        height: 130px;
+        border-radius: 50%;
+        display: block;
+        object-fit: cover;
+    }
+
+    /* Logo compacto barra superior */
+    .logo-barra {
+        display: inline-block;
+        background: radial-gradient(circle, #FFFFFF 0%, #F5F0E8 100%);
+        border-radius: 50%;
+        padding: 2px;
+        border: 2px solid #C9A961;
+        box-shadow: 0 0 8px rgba(201, 169, 97, 0.5);
+        vertical-align: middle;
+        margin-right: 8px;
+    }
+    .logo-barra img {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: block;
+        object-fit: cover;
+    }
+
+    /* Marca CUDY con texto */
+    .brand-cudy {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 10px;
+        padding: 6px 0;
+    }
+    .brand-cudy .texto {
+        text-align: right;
+        line-height: 1.1;
+    }
+    .brand-cudy .texto .linea1 {
+        color: #A89968;
+        font-size: 0.65rem;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        font-weight: 600;
+    }
+    .brand-cudy .texto .linea2 {
+        color: #C9A961;
+        font-size: 0.95rem;
+        font-weight: 800;
+        letter-spacing: 1.5px;
+    }
+
+    /* Barra de progreso dorada */
+    .stProgress > div > div > div > div {
+        background-color: #C9A961 !important;
+    }
+
     @media (max-width: 768px) {
         .stButton > button { min-height: 48px !important; font-size: 0.95rem !important; padding: 10px 14px !important; border-radius: 12px !important; }
         .stTextInput > div > div > input, .stSelectbox > div > div > div { min-height: 44px !important; font-size: 16px !important; }
@@ -71,6 +149,8 @@ st.markdown("""
         h1 { font-size: 1.5rem !important; } h2 { font-size: 1.3rem !important; } h3 { font-size: 1.1rem !important; }
         [data-testid="stMetric"] { padding: 8px 0 !important; }
         [data-testid="stMetricValue"] { font-size: 1.4rem !important; }
+        .logo-medallon img { width: 100px; height: 100px; }
+        .brand-cudy .texto .linea2 { font-size: 0.8rem; }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -84,14 +164,14 @@ def exportar_excel_profesional(df, titulo_reporte, subtitulo_extra=""):
     ws = wb.active
     ws.title = "Reporte"
 
-    header_fill = PatternFill(start_color="0072FF", end_color="0072FF", fill_type="solid")
+    header_fill = PatternFill(start_color="7B1B2E", end_color="7B1B2E", fill_type="solid")
     header_font = Font(bold=True, color="FFFFFF", size=11)
     header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    title_font = Font(bold=True, size=16, color="0072FF")
+    title_font = Font(bold=True, size=16, color="7B1B2E")
     sub_font = Font(italic=True, size=9, color="666666")
     border_thin = Side(style='thin', color='BFBFBF')
     border = Border(left=border_thin, right=border_thin, top=border_thin, bottom=border_thin)
-    alt_fill = PatternFill(start_color="F0F7FF", end_color="F0F7FF", fill_type="solid")
+    alt_fill = PatternFill(start_color="F5F0E8", end_color="F5F0E8", fill_type="solid")
     data_align = Alignment(vertical="center", wrap_text=False)
 
     total_cols = len(df.columns)
@@ -103,7 +183,7 @@ def exportar_excel_profesional(df, titulo_reporte, subtitulo_extra=""):
     ws.row_dimensions[1].height = 24
 
     ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=total_cols)
-    sub_text = f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+    sub_text = f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}  |  Colegio Universitario de Yahualica"
     if subtitulo_extra:
         sub_text += f"  |  {subtitulo_extra}"
     sub_cell = ws.cell(row=2, column=1, value=sub_text)
@@ -382,49 +462,71 @@ def set_flash(tipo, texto):
 # HELPERS: LOGO Y BRANDING
 # =========================================================
 def mostrar_branding_login():
-    """Muestra el logo completo en la pantalla de login."""
+    """Escudo circular en un medallón dorado, centrado en el login."""
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown(f"""
-            <div style="
-                background: #ffffff;
-                border-radius: 16px;
-                padding: 18px 22px;
-                margin-bottom: 20px;
-                box-shadow: 0 0 20px rgba(0, 243, 255, 0.25);
-                text-align: center;
-            ">
-                <img src="{LOGO_COMPLETO_URL}" 
-                     style="width: 100%; max-width: 420px; height: auto; display: block; margin: 0 auto;"
-                     alt="Colegio Universitario de Yahualica">
+            <div style="text-align: center; margin-bottom: 24px;">
+                <div class="logo-medallon">
+                    <img src="{LOGO_ESCUDO_URL}" alt="Colegio Universitario de Yahualica">
+                </div>
+                <div style="
+                    color: #C9A961;
+                    font-size: 0.7rem;
+                    letter-spacing: 4px;
+                    text-transform: uppercase;
+                    font-weight: 600;
+                    margin-top: 4px;
+                ">
+                    Colegio Universitario
+                </div>
+                <div style="
+                    color: #C9A961;
+                    font-size: 1.6rem;
+                    font-weight: 800;
+                    letter-spacing: 3px;
+                    margin-top: 2px;
+                ">
+                    DE YAHUALICA
+                </div>
+                <div style="
+                    width: 80px;
+                    height: 2px;
+                    background: linear-gradient(90deg, transparent, #C9A961, transparent);
+                    margin: 12px auto 0 auto;
+                "></div>
             </div>
         """, unsafe_allow_html=True)
 
 
 def mostrar_logo_escudo(tamaño_px=44):
-    """Devuelve el HTML del escudo pequeño para la barra superior."""
+    """Escudo circular pequeño para la barra superior."""
     return f"""
-        <div style="
-            display: inline-block;
-            background: #ffffff;
-            border-radius: 50%;
-            padding: 3px;
-            box-shadow: 0 0 8px rgba(0, 243, 255, 0.4);
-            vertical-align: middle;
-            margin-right: 8px;
-        ">
-            <img src="{LOGO_ESCUDO_URL}" 
-                 style="width: {tamaño_px}px; height: {tamaño_px}px; display: block; border-radius: 50%;"
-                 alt="CUDY">
+        <div class="logo-barra">
+            <img src="{LOGO_ESCUDO_URL}" alt="CUDY">
+        </div>
+    """
+
+
+def mostrar_marca_cudy():
+    """Escudo pequeño + nombre de la universidad alineado a la derecha."""
+    return f"""
+        <div class="brand-cudy">
+            <div class="texto">
+                <div class="linea1">Colegio Universitario</div>
+                <div class="linea2">DE YAHUALICA</div>
+            </div>
+            <div class="logo-barra" style="margin-right: 0;">
+                <img src="{LOGO_ESCUDO_URL}" alt="CUDY">
+            </div>
         </div>
     """
 
 
 # =========================================================
-# HELPER: MI CUENTA (Cambiar contraseña + Actualizar teléfono)
+# HELPER: MI CUENTA (Contraseña + Teléfono)
 # =========================================================
 def mostrar_mi_cuenta(user):
-    """Expander con opciones de auto-servicio para el usuario."""
     with st.expander("🔧 Mi cuenta — Contraseña y contacto"):
 
         # ============ SECCIÓN 1: TELÉFONO ============
@@ -586,7 +688,7 @@ def cerrar_sesion():
 def pantalla_login():
     mostrar_branding_login()
     st.markdown('<p class="titulo-principal">🅿️ Estacionamiento Universitario</p>', unsafe_allow_html=True)
-    st.markdown('<p class="subtitulo">Control de acceso inteligente — Colegio Universitario de Yahualica</p>', unsafe_allow_html=True)
+    st.markdown('<p class="subtitulo">Control de acceso inteligente</p>', unsafe_allow_html=True)
     mostrar_flash()
 
     if contar_admins() == 0:
@@ -1202,9 +1304,7 @@ def panel_admin():
         sub = st.radio("Acción:", ["🎓 Crear Alumno", "👷 Crear Trabajador", "👑 Crear Admin", "📋 Ver Todos"],
                        horizontal=True, label_visibility="collapsed")
 
-        # =========================================================
-        # CREAR ALUMNO
-        # =========================================================
+        # ============ CREAR ALUMNO ============
         if sub == "🎓 Crear Alumno":
             id_sugerido = generar_siguiente_id("ALU")
             st.info(f"💡 El ID sugerido es **{id_sugerido}**.")
@@ -1268,9 +1368,7 @@ def panel_admin():
                 except Exception as e:
                     st.error(f"Error: {e}")
 
-        # =========================================================
-        # CREAR TRABAJADOR
-        # =========================================================
+        # ============ CREAR TRABAJADOR ============
         elif sub == "👷 Crear Trabajador":
             u = st.text_input("Usuario", key="ct_u")
             u_ok = mostrar_validacion(u, validar_usuario)
@@ -1307,9 +1405,7 @@ def panel_admin():
                 except Exception as e:
                     st.error(f"Error: {e}")
 
-        # =========================================================
-        # CREAR ADMIN
-        # =========================================================
+        # ============ CREAR ADMIN ============
         elif sub == "👑 Crear Admin":
             st.warning("⚠️ Los admins tienen acceso total. Otorga este rol con precaución.")
 
@@ -1348,9 +1444,7 @@ def panel_admin():
                 except Exception as e:
                     st.error(f"Error: {e}")
 
-        # =========================================================
-        # VER TODOS
-        # =========================================================
+        # ============ VER TODOS ============
         elif sub == "📋 Ver Todos":
             col_f1, col_f2 = st.columns([2, 1])
             with col_f1:
@@ -1720,18 +1814,18 @@ def panel_admin():
             st.markdown("---")
             colores_accion = {
                 "INICIO_SESION": "#00ff88",
-                "CREAR_ALUMNO": "#00f3ff", "CREAR_TRABAJADOR": "#00f3ff", "CREAR_ADMIN": "#ffaa00",
-                "EDITAR_USUARIO": "#ffaa00",
-                "DESACTIVAR_USUARIO": "#ff4444", "REACTIVAR_USUARIO": "#00ff88",
-                "ELIMINAR_USUARIO": "#ff0055", "ELIMINAR_VEHICULO": "#ff0055",
-                "CREAR_VEHICULO": "#00f3ff",
-                "REGISTRAR_ENTRADA": "#00ff88", "REGISTRAR_SALIDA": "#ffaa00",
+                "CREAR_ALUMNO": "#C9A961", "CREAR_TRABAJADOR": "#C9A961", "CREAR_ADMIN": "#D7192D",
+                "EDITAR_USUARIO": "#C9A961",
+                "DESACTIVAR_USUARIO": "#D7192D", "REACTIVAR_USUARIO": "#00ff88",
+                "ELIMINAR_USUARIO": "#7B1B2E", "ELIMINAR_VEHICULO": "#7B1B2E",
+                "CREAR_VEHICULO": "#C9A961",
+                "REGISTRAR_ENTRADA": "#00ff88", "REGISTRAR_SALIDA": "#C9A961",
                 "DESBLOQUEAR_USUARIO": "#00ff88",
-                "CAMBIAR_PASSWORD": "#ffaa00",
-                "ACTUALIZAR_TELEFONO": "#ffaa00",
+                "CAMBIAR_PASSWORD": "#C9A961",
+                "ACTUALIZAR_TELEFONO": "#C9A961",
             }
             for l in logs:
-                color = colores_accion.get(l['accion'], "#00f3ff")
+                color = colores_accion.get(l['accion'], "#C9A961")
                 icono_rol = {'alumno': '🎓', 'trabajador': '👷', 'admin': '👑'}.get(l['rol_accion'], '👤')
                 fecha_str = l['fecha'].strftime("%d/%m/%Y %H:%M:%S") if l['fecha'] else "N/A"
                 st.markdown(f"""
@@ -1771,16 +1865,18 @@ if st.session_state.usuario is not None:
     rol = st.session_state.usuario['rol']
     iconos = {'alumno': '🎓', 'trabajador': '👷', 'admin': '👑'}
 
-    col_logo, col_info, col_salir = st.columns([1, 4, 1])
-    with col_logo:
-        st.markdown(mostrar_logo_escudo(44), unsafe_allow_html=True)
-    with col_info:
+    # Barra superior: usuario (izq) | marca CUDY (der) | salir (extremo der)
+    col_user, col_brand, col_salir = st.columns([3, 2, 1])
+
+    with col_user:
         st.markdown(
-            f"<div style='padding-top: 8px;'>"
+            f"<div style='padding-top: 10px; color: #C9A961;'>"
             f"<b>{iconos.get(rol, '👤')} @{st.session_state.usuario['usuario']}</b>"
             f"</div>",
             unsafe_allow_html=True
         )
+    with col_brand:
+        st.markdown(mostrar_marca_cudy(), unsafe_allow_html=True)
     with col_salir:
         if st.button("🚪 Salir", use_container_width=True):
             cerrar_sesion()
