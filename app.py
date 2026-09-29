@@ -704,7 +704,7 @@ def cerrar_sesion():
 # =========================================================
 def pantalla_login():
     mostrar_branding_login()
-    st.markdown('<p class="titulo-principal">🅿️ Estacionamiento Universitario</p>', unsafe_allow_html=True)
+    st.markdown('<p class="titulo-principal">Estacionamiento Universitario</p>', unsafe_allow_html=True)
     st.markdown('<p class="subtitulo">Control de acceso inteligente</p>', unsafe_allow_html=True)
     mostrar_flash()
 
