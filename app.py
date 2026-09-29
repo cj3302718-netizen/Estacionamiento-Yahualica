@@ -204,7 +204,7 @@ def exportar_excel_profesional(df, titulo_reporte, subtitulo_extra=""):
     ws.row_dimensions[1].height = 24
 
     ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=total_cols)
-    sub_text = f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}  |  CUYPARK — Colegio Universitario de Yahualica"
+    sub_text = f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}  |  CUYPARK - Colegio Universitario de Yahualica"
     if subtitulo_extra:
         sub_text += f"  |  {subtitulo_extra}"
     sub_cell = ws.cell(row=2, column=1, value=sub_text)
@@ -497,7 +497,7 @@ def generar_pdf_qr(user, vehiculo, qr_bytes):
             self.set_y(-18)
             self.set_font("Helvetica", "I", 7)
             self.set_text_color(130, 130, 130)
-            self.cell(0, 5, "CUYPARK — Sistema de Estacionamiento Inteligente", align="C", ln=1)
+            self.cell(0, 5, "CUYPARK - Sistema de Estacionamiento Inteligente", align="C", ln=1)
             self.cell(0, 5, f"Documento generado el {datetime.now().strftime('%d/%m/%Y a las %H:%M')}", align="C")
 
     pdf = PDF(orientation="P", unit="mm", format="A4")
@@ -596,12 +596,10 @@ def generar_pdf_qr(user, vehiculo, qr_bytes):
     pdf.set_text_color(123, 27, 46)
     pdf.cell(0, 7, "Código QR de Acceso", ln=1, align="C")
 
-    # Guardamos el QR en temporal
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
         tmp.write(qr_bytes)
         tmp_path = tmp.name
 
-    # Marco decorativo dorado
     qr_size = 90
     qr_x = (210 - qr_size) / 2
     qr_y = pdf.get_y() + 3
@@ -629,7 +627,6 @@ def generar_pdf_qr(user, vehiculo, qr_bytes):
         align="C"
     )
 
-    # Devolvemos el PDF como bytes
     return bytes(pdf.output())
 
 
@@ -727,7 +724,6 @@ def mostrar_marca_cudy():
 def mostrar_mi_cuenta(user):
     with st.expander("🔧 Mi cuenta — Contraseña y contacto"):
 
-        # ============ SECCIÓN 1: TELÉFONO ============
         st.markdown("#### 📱 Actualizar mi teléfono")
         st.caption("Solo el teléfono puede ser editado por ti. Otros datos son oficiales.")
 
@@ -773,7 +769,6 @@ def mostrar_mi_cuenta(user):
 
         st.markdown("---")
 
-        # ============ SECCIÓN 2: CONTRASEÑA ============
         st.markdown("#### 🔑 Cambiar mi contraseña")
         st.caption("Actualiza tu contraseña personal. Necesitas conocer la actual.")
 
@@ -1516,19 +1511,16 @@ def panel_admin():
         horizontal=True, label_visibility="collapsed"
     )
 
-    # --- DASHBOARD ---
     if seccion == "📊 Dashboard":
         st.markdown("### 📊 Estado actual del estacionamiento")
         st.caption("🟢 Datos actualizándose en tiempo real (cada 15s)")
         _dashboard_datos_vivo()
 
-    # --- GESTIÓN DE USUARIOS ---
     elif seccion == "👥 Usuarios":
         st.markdown("### 👥 Gestión de Usuarios")
         sub = st.radio("Acción:", ["🎓 Crear Alumno", "👷 Crear Trabajador", "👑 Crear Admin", "📋 Ver Todos"],
                        horizontal=True, label_visibility="collapsed")
 
-        # ============ CREAR ALUMNO ============
         if sub == "🎓 Crear Alumno":
             id_sugerido = generar_siguiente_id("ALU")
             st.info(f"💡 El ID sugerido es **{id_sugerido}**.")
@@ -1592,7 +1584,6 @@ def panel_admin():
                 except Exception as e:
                     st.error(f"Error: {e}")
 
-        # ============ CREAR TRABAJADOR ============
         elif sub == "👷 Crear Trabajador":
             u = st.text_input("Usuario", key="ct_u")
             u_ok = mostrar_validacion(u, validar_usuario)
@@ -1629,7 +1620,6 @@ def panel_admin():
                 except Exception as e:
                     st.error(f"Error: {e}")
 
-        # ============ CREAR ADMIN ============
         elif sub == "👑 Crear Admin":
             st.warning("⚠️ Los admins tienen acceso total. Otorga este rol con precaución.")
 
@@ -1668,7 +1658,6 @@ def panel_admin():
                 except Exception as e:
                     st.error(f"Error: {e}")
 
-        # ============ VER TODOS ============
         elif sub == "📋 Ver Todos":
             col_f1, col_f2 = st.columns([2, 1])
             with col_f1:
@@ -1885,7 +1874,6 @@ def panel_admin():
 
                         st.markdown('</div>', unsafe_allow_html=True)
 
-    # --- REGISTROS ---
     elif seccion == "📋 Registros":
         st.markdown("### 📋 Registros de entradas/salidas")
         fecha_desde, fecha_hasta = selector_rango_fechas("registros")
@@ -1950,7 +1938,6 @@ def panel_admin():
                             img = base64_a_bytes(r['evidencia_salida'])
                             if img: st.image(img, use_container_width=True)
 
-    # --- MÉTRICAS ---
     elif seccion == "📈 Métricas":
         st.markdown("### 📈 Métricas y patrones de uso")
         registros = obtener_todos_los_registros()
@@ -1989,7 +1976,6 @@ def panel_admin():
             por_tipo = df.groupby('tipo').size().reset_index(name='cantidad')
             st.dataframe(por_tipo, use_container_width=True, hide_index=True)
 
-    # --- AUDITORÍA ---
     elif seccion == "🔍 Auditoría":
         st.markdown("### 🔍 Registro de Auditoría")
         st.caption("Historial de todas las acciones importantes en el sistema.")
@@ -2066,7 +2052,6 @@ def panel_admin():
                     </div>
                 """, unsafe_allow_html=True)
 
-    # --- MI CUENTA ---
     elif seccion == "🔧 Mi Cuenta":
         st.markdown("### 🔧 Mi Cuenta")
         st.caption("Gestiona tu propia cuenta desde aquí.")
