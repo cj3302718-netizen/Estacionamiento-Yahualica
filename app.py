@@ -32,7 +32,7 @@ LOGO_COMPLETO_URL = "https://raw.githubusercontent.com/cj3302718-netizen/Estacio
 LOGO_ESCUDO_URL = "https://raw.githubusercontent.com/cj3302718-netizen/Estacionamiento-Yahualica/main/logo_escudo.png"
 
 st.set_page_config(
-    page_title="Estacionamiento CUDY",
+    page_title="CUYPARK",
     page_icon=LOGO_ESCUDO_URL,
     layout="centered"
 )
@@ -704,8 +704,8 @@ def cerrar_sesion():
 # =========================================================
 def pantalla_login():
     mostrar_branding_login()
-    st.markdown('<p class="titulo-principal">Estacionamiento Universitario</p>', unsafe_allow_html=True)
-    st.markdown('<p class="subtitulo">Control de acceso inteligente</p>', unsafe_allow_html=True)
+    st.markdown('<p class="titulo-principal">CUYPARK</p>', unsafe_allow_html=True)
+    st.markdown('<p class="subtitulo">Sistema de Estacionamiento Inteligente — CUY</p>', unsafe_allow_html=True)
     mostrar_flash()
 
     if contar_admins() == 0:
