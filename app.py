@@ -464,11 +464,9 @@ def generar_pdf_qr(user, vehiculo, qr_bytes):
 
     class PDF(FPDF):
         def header(self):
-            # Fondo superior con barra vino
-            self.set_fill_color(123, 27, 46)  # #7B1B2E
+            self.set_fill_color(123, 27, 46)
             self.rect(0, 0, 210, 28, "F")
 
-            # Escudo descargado desde GitHub
             try:
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as _f:
                     _f.write(urllib.request.urlopen(LOGO_ESCUDO_URL, timeout=5).read())
@@ -481,11 +479,10 @@ def generar_pdf_qr(user, vehiculo, qr_bytes):
             except Exception:
                 pass
 
-            # Texto de la institución
             self.set_y(6)
             self.set_x(35)
             self.set_font("Helvetica", "B", 10)
-            self.set_text_color(201, 169, 97)  # #C9A961
+            self.set_text_color(201, 169, 97)
             self.cell(0, 5, "COLEGIO UNIVERSITARIO", ln=1, align="L")
             self.set_x(35)
             self.set_font("Helvetica", "B", 14)
@@ -503,7 +500,6 @@ def generar_pdf_qr(user, vehiculo, qr_bytes):
     pdf = PDF(orientation="P", unit="mm", format="A4")
     pdf.add_page()
 
-    # --- TÍTULO ---
     pdf.set_y(35)
     pdf.set_font("Helvetica", "B", 22)
     pdf.set_text_color(123, 27, 46)
@@ -515,13 +511,11 @@ def generar_pdf_qr(user, vehiculo, qr_bytes):
 
     pdf.ln(4)
 
-    # --- LÍNEA DECORATIVA ---
     pdf.set_draw_color(201, 169, 97)
     pdf.set_line_width(0.5)
     pdf.line(60, pdf.get_y(), 150, pdf.get_y())
     pdf.ln(6)
 
-    # --- DATOS DEL ALUMNO ---
     pdf.set_font("Helvetica", "B", 12)
     pdf.set_text_color(123, 27, 46)
     pdf.cell(0, 7, "Datos del Alumno", ln=1)
@@ -555,7 +549,6 @@ def generar_pdf_qr(user, vehiculo, qr_bytes):
 
     pdf.ln(4)
 
-    # --- DATOS DEL VEHÍCULO ---
     pdf.set_font("Helvetica", "B", 12)
     pdf.set_text_color(123, 27, 46)
     pdf.cell(0, 7, "Datos del Vehículo", ln=1)
@@ -591,7 +584,6 @@ def generar_pdf_qr(user, vehiculo, qr_bytes):
 
     pdf.ln(8)
 
-    # --- QR ---
     pdf.set_font("Helvetica", "B", 12)
     pdf.set_text_color(123, 27, 46)
     pdf.cell(0, 7, "Código QR de Acceso", ln=1, align="C")
@@ -617,7 +609,6 @@ def generar_pdf_qr(user, vehiculo, qr_bytes):
 
     pdf.set_y(qr_y + qr_size + 8)
 
-    # --- INSTRUCCIONES ---
     pdf.set_font("Helvetica", "I", 9)
     pdf.set_text_color(100, 100, 100)
     pdf.multi_cell(
@@ -657,7 +648,6 @@ def set_flash(tipo, texto):
 # HELPERS: LOGO Y BRANDING
 # =========================================================
 def mostrar_branding_login():
-    """Escudo circular en un medallón dorado, centrado en el login."""
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown(f"""
@@ -695,7 +685,6 @@ def mostrar_branding_login():
 
 
 def mostrar_logo_escudo(tamaño_px=44):
-    """Escudo circular pequeño para la barra superior."""
     return f"""
         <div class="logo-barra">
             <img src="{LOGO_ESCUDO_URL}" alt="CUYPARK">
@@ -704,7 +693,6 @@ def mostrar_logo_escudo(tamaño_px=44):
 
 
 def mostrar_marca_cudy():
-    """Escudo pequeño + nombre de la universidad alineado a la derecha."""
     return f"""
         <div class="brand-cudy">
             <div class="texto">
@@ -1754,10 +1742,27 @@ def panel_admin():
                             with st.container(border=True):
                                 st.error(f"🚨 ¿Eliminar **permanentemente** a **{u['nombre_completo']}** (@{u['usuario']})?")
                                 st.caption("Esta acción no se puede deshacer y borrará la cuenta del sistema.")
+
+                                # 🔒 Doble confirmación SOLO para admins
+                                if u['rol'] == 'admin':
+                                    st.warning("⚠️ **Estás a punto de eliminar a un ADMINISTRADOR.** Esta acción es crítica.")
+                                    texto_confirmacion = st.text_input(
+                                        "Escribe **ELIMINAR** (en mayúsculas) para habilitar el botón:",
+                                        key=f"confirma_texto_{u['id']}",
+                                        placeholder="ELIMINAR",
+                                        label_visibility="visible"
+                                    )
+                                    confirmacion_ok = (texto_confirmacion.strip() == "ELIMINAR")
+                                    if not confirmacion_ok and texto_confirmacion:
+                                        st.markdown('<div class="val-error">❌ Debes escribir exactamente ELIMINAR (en mayúsculas)</div>', unsafe_allow_html=True)
+                                else:
+                                    confirmacion_ok = True
+
                                 col_si, col_no = st.columns(2)
                                 with col_si:
                                     st.button("✅ Sí, eliminar", key=f"si_del_{u['id']}", type="primary",
                                               use_container_width=True,
+                                              disabled=not confirmacion_ok,
                                               on_click=cb_eliminar_usuario,
                                               args=(u['id'], user['id'], user['usuario'], u['usuario'], u['nombre_completo']))
                                 with col_no:
