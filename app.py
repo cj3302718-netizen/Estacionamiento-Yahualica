@@ -5,6 +5,8 @@ import os
 import tempfile
 import urllib.request
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 from datetime import datetime, date, timedelta
 from io import BytesIO
 from openpyxl import Workbook
@@ -41,10 +43,16 @@ st.set_page_config(
     layout="centered"
 )
 
-# --- ESTILOS (Paleta universitaria: vino + dorado) ---
+# --- COLORES PALETA CUY ---
+COLOR_VINO = "#7B1B2E"
+COLOR_VINO_CLARO = "#D7192D"
+COLOR_DORADO = "#C9A961"
+COLOR_CREMA = "#F5F0E8"
+COLOR_AZUL = "#0066B3"
+
+# --- ESTILOS ---
 st.markdown("""
 <style>
-    /* Fondo general con degradado vino oscuro */
     .stApp {
         background: radial-gradient(ellipse at top, #1a0a0f 0%, #0d0407 40%, #050203 100%) !important;
     }
@@ -95,7 +103,6 @@ st.markdown("""
     .val-ok { color: #00ff88; font-size: 0.8rem; margin-top: -8px; margin-bottom: 8px; }
     .val-error { color: #ff5555; font-size: 0.8rem; margin-top: -8px; margin-bottom: 8px; }
 
-    /* Medallón del logo en login */
     .logo-medallon {
         display: inline-block;
         background: radial-gradient(circle at 30% 30%, #FFFFFF 0%, #F5F0E8 60%, #E8DFD0 100%);
@@ -113,7 +120,6 @@ st.markdown("""
         object-fit: cover;
     }
 
-    /* Logo compacto barra superior */
     .logo-barra {
         display: inline-block;
         background: radial-gradient(circle, #FFFFFF 0%, #F5F0E8 100%);
@@ -132,7 +138,6 @@ st.markdown("""
         object-fit: cover;
     }
 
-    /* Marca CUYPARK con texto */
     .brand-cudy {
         display: flex;
         align-items: center;
@@ -140,28 +145,11 @@ st.markdown("""
         gap: 10px;
         padding: 6px 0;
     }
-    .brand-cudy .texto {
-        text-align: right;
-        line-height: 1.1;
-    }
-    .brand-cudy .texto .linea1 {
-        color: #A89968;
-        font-size: 0.65rem;
-        letter-spacing: 2px;
-        text-transform: uppercase;
-        font-weight: 600;
-    }
-    .brand-cudy .texto .linea2 {
-        color: #C9A961;
-        font-size: 0.95rem;
-        font-weight: 800;
-        letter-spacing: 1.5px;
-    }
+    .brand-cudy .texto { text-align: right; line-height: 1.1; }
+    .brand-cudy .texto .linea1 { color: #A89968; font-size: 0.65rem; letter-spacing: 2px; text-transform: uppercase; font-weight: 600; }
+    .brand-cudy .texto .linea2 { color: #C9A961; font-size: 0.95rem; font-weight: 800; letter-spacing: 1.5px; }
 
-    /* Barra de progreso dorada */
-    .stProgress > div > div > div > div {
-        background-color: #C9A961 !important;
-    }
+    .stProgress > div > div > div > div { background-color: #C9A961 !important; }
 
     @media (max-width: 768px) {
         .stButton > button { min-height: 48px !important; font-size: 0.95rem !important; padding: 10px 14px !important; border-radius: 12px !important; }
@@ -432,9 +420,6 @@ def validar_grupo(grupo):
     return True, ""
 
 
-# =========================================================
-# HELPER: MOSTRAR VALIDACIÓN EN VIVO
-# =========================================================
 def mostrar_validacion(valor, validador, obligatorio=True):
     if not valor or not valor.strip():
         if obligatorio:
@@ -457,11 +442,129 @@ def limpiar_campos(keys):
 
 
 # =========================================================
+# HELPERS: GRÁFICOS PLOTLY (Paleta CUY)
+# =========================================================
+def grafico_dona_ocupacion(autos_ocupados, autos_libres, motos_ocupados, motos_libres):
+    labels = ["🚗 Autos", "🏍️ Motos", "Libres"]
+    values = [autos_ocupados, motos_ocupados, autos_libres + motos_libres]
+    colors = [COLOR_VINO_CLARO, COLOR_DORADO, "#2a2a2a"]
+
+    fig = go.Figure(data=[go.Pie(
+        labels=labels,
+        values=values,
+        hole=0.6,
+        marker=dict(colors=colors, line=dict(color="#0d0407", width=2)),
+        textinfo="label+percent",
+        textfont=dict(size=11, color=COLOR_CREMA),
+        hovertemplate="<b>%{label}</b><br>Cantidad: %{value}<br>%{percent}<extra></extra>"
+    )])
+
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color=COLOR_CREMA, size=11),
+        margin=dict(l=10, r=10, t=10, b=10),
+        height=280,
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=-0.1, xanchor="center", x=0.5, font=dict(size=10, color=COLOR_CREMA)),
+        annotations=[dict(
+            text=f"<b>{autos_ocupados + motos_ocupados}</b><br><span style='font-size:10px'>Ocupados</span>",
+            x=0.5, y=0.5,
+            font=dict(size=18, color=COLOR_DORADO),
+            showarrow=False
+        )]
+    )
+    return fig
+
+
+def grafico_barras_horas(df_horas):
+    fig = go.Figure(data=[go.Bar(
+        x=df_horas["hora_str"],
+        y=df_horas["entradas"],
+        marker=dict(
+            color=df_horas["entradas"],
+            colorscale=[[0, COLOR_VINO], [1, COLOR_DORADO]],
+            line=dict(color=COLOR_DORADO, width=1)
+        ),
+        text=df_horas["entradas"],
+        textposition="outside",
+        textfont=dict(color=COLOR_CREMA, size=10),
+        hovertemplate="<b>%{x}</b><br>Entradas: %{y}<extra></extra>"
+    )])
+
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color=COLOR_CREMA, size=11),
+        xaxis=dict(title="", gridcolor="rgba(201, 169, 97, 0.1)", tickfont=dict(color=COLOR_CREMA, size=10)),
+        yaxis=dict(title="", gridcolor="rgba(201, 169, 97, 0.1)", tickfont=dict(color=COLOR_CREMA, size=10)),
+        margin=dict(l=10, r=10, t=20, b=10),
+        height=280,
+        showlegend=False
+    )
+    return fig
+
+
+def grafico_linea_tendencia(df_dias):
+    fig = go.Figure()
+
+    fig.add_trace(go.Scatter(
+        x=df_dias["fecha_str"],
+        y=df_dias["entradas"],
+        mode="lines+markers",
+        line=dict(color=COLOR_DORADO, width=3, shape="spline"),
+        marker=dict(color=COLOR_VINO_CLARO, size=10, line=dict(color=COLOR_DORADO, width=2)),
+        fill="tozeroy",
+        fillcolor="rgba(123, 27, 46, 0.25)",
+        hovertemplate="<b>%{x}</b><br>Entradas: %{y}<extra></extra>"
+    ))
+
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color=COLOR_CREMA, size=11),
+        xaxis=dict(gridcolor="rgba(201, 169, 97, 0.1)", tickfont=dict(color=COLOR_CREMA, size=10)),
+        yaxis=dict(gridcolor="rgba(201, 169, 97, 0.1)", tickfont=dict(color=COLOR_CREMA, size=10)),
+        margin=dict(l=10, r=10, t=20, b=10),
+        height=280,
+        showlegend=False
+    )
+    return fig
+
+
+def grafico_barras_carreras(df_carreras):
+    fig = go.Figure(data=[go.Bar(
+        y=df_carreras["carrera"],
+        x=df_carreras["visitas"],
+        orientation="h",
+        marker=dict(
+            color=df_carreras["visitas"],
+            colorscale=[[0, COLOR_VINO], [1, COLOR_DORADO]],
+            line=dict(color=COLOR_DORADO, width=1)
+        ),
+        text=df_carreras["visitas"],
+        textposition="outside",
+        textfont=dict(color=COLOR_CREMA, size=10),
+        hovertemplate="<b>%{y}</b><br>Visitas: %{x}<extra></extra>"
+    )])
+
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color=COLOR_CREMA, size=11),
+        xaxis=dict(gridcolor="rgba(201, 169, 97, 0.1)", tickfont=dict(color=COLOR_CREMA, size=10)),
+        yaxis=dict(gridcolor="rgba(201, 169, 97, 0.1)", tickfont=dict(color=COLOR_CREMA, size=10)),
+        margin=dict(l=10, r=10, t=20, b=10),
+        height=280,
+        showlegend=False
+    )
+    return fig
+
+
+# =========================================================
 # HELPER: GENERAR PDF DEL QR (CUYPARK)
 # =========================================================
 def generar_pdf_qr(user, vehiculo, qr_bytes):
-    """Genera un PDF profesional con el código QR del alumno."""
-
     class PDF(FPDF):
         def header(self):
             self.set_fill_color(123, 27, 46)
@@ -687,7 +790,7 @@ def mostrar_branding_login():
 def mostrar_logo_escudo(tamaño_px=44):
     return f"""
         <div class="logo-barra">
-            <img src="{LOGO_ESCUDO_URL}" alt="CUYPARK">
+            <img src="{LOGO_ESCUDO_URL}" alt="CUY">
         </div>
     """
 
@@ -700,7 +803,7 @@ def mostrar_marca_cudy():
                 <div class="linea2">DE YAHUALICA</div>
             </div>
             <div class="logo-barra" style="margin-right: 0;">
-                <img src="{LOGO_ESCUDO_URL}" alt="CUYPARK">
+                <img src="{LOGO_ESCUDO_URL}" alt="CUY">
             </div>
         </div>
     """
@@ -869,7 +972,7 @@ def cerrar_sesion():
 def pantalla_login():
     mostrar_branding_login()
     st.markdown('<p class="titulo-principal">CUYPARK</p>', unsafe_allow_html=True)
-    st.markdown('<p class="subtitulo">Sistema de Estacionamiento Inteligente — CUDY</p>', unsafe_allow_html=True)
+    st.markdown('<p class="subtitulo">Sistema de Estacionamiento Inteligente — CUY</p>', unsafe_allow_html=True)
     mostrar_flash()
 
     if contar_admins() == 0:
@@ -960,6 +1063,46 @@ def _dashboard_datos_vivo():
     autos = next((e for e in espacios if e['tipo'] == 'Auto'), None)
     motos = next((e for e in espacios if e['tipo'] == 'Moto'), None)
 
+    # --- LOGO CUY + TÍTULO ---
+    col_logo, col_titulo = st.columns([1, 6])
+    with col_logo:
+        st.markdown(f"""
+            <div style="
+                background: radial-gradient(circle, #FFFFFF 0%, #F5F0E8 100%);
+                border-radius: 50%;
+                padding: 4px;
+                border: 3px solid {COLOR_DORADO};
+                box-shadow: 0 0 12px rgba(201, 169, 97, 0.5);
+                width: 70px;
+                height: 70px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            ">
+                <img src="{LOGO_ESCUDO_URL}" style="width: 60px; height: 60px; border-radius: 50%;" alt="CUY">
+            </div>
+        """, unsafe_allow_html=True)
+    with col_titulo:
+        st.markdown(f"""
+            <div style="padding-top: 8px;">
+                <div style="
+                    color: {COLOR_DORADO};
+                    font-size: 1.6rem;
+                    font-weight: 800;
+                    letter-spacing: 1px;
+                ">📊 Panel de Control</div>
+                <div style="
+                    color: {COLOR_CREMA};
+                    font-size: 0.85rem;
+                    opacity: 0.7;
+                    margin-top: -4px;
+                ">Colegio Universitario de Yahualica · Actualizado cada 15s</div>
+            </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # --- TARJETAS KPI ---
     col1, col2 = st.columns(2)
     with col1:
         if autos:
@@ -1026,36 +1169,56 @@ def _dashboard_datos_vivo():
 
         st.markdown("---")
 
-        st.markdown("#### 📅 Entradas últimos 7 días")
+        # --- GRÁFICO 1: DONA DE OCUPACIÓN ---
+        if autos and motos:
+            st.markdown("#### 🍩 Distribución de ocupación")
+            autos_libres = autos['capacidad_total'] - autos['ocupados']
+            motos_libres = motos['capacidad_total'] - motos['ocupados']
+            fig_dona = grafico_dona_ocupacion(
+                autos['ocupados'], autos_libres,
+                motos['ocupados'], motos_libres
+            )
+            st.plotly_chart(fig_dona, use_container_width=True, config={"displayModeBar": False})
+
+        # --- GRÁFICO 2: HORAS DE MAYOR DEMANDA ---
+        st.markdown("#### ⏰ Horas de mayor demanda (últimos 7 días)")
         hace_7 = hoy - timedelta(days=6)
         df_7d = df[df['fecha'] >= hace_7].copy()
 
-        if not df_7d.empty:
-            entradas_por_dia = df_7d.groupby('fecha').size().reset_index(name='entradas')
-            todas_fechas = pd.DataFrame({'fecha': pd.date_range(hace_7, hoy).date})
-            entradas_por_dia = todas_fechas.merge(entradas_por_dia, on='fecha', how='left').fillna(0)
-            entradas_por_dia['fecha_str'] = pd.to_datetime(entradas_por_dia['fecha']).dt.strftime('%d/%m')
-            st.bar_chart(entradas_por_dia.set_index('fecha_str')['entradas'])
-        else:
-            st.caption("Sin entradas en los últimos 7 días.")
-
-        st.markdown("#### ⏰ Horas de mayor demanda (últimos 7 días)")
         if not df_7d.empty:
             df_7d['hora'] = df_7d['hora_entrada'].dt.hour
             horas_pico = df_7d.groupby('hora').size().reset_index(name='entradas')
             todas_horas = pd.DataFrame({'hora': range(6, 22)})
             horas_pico = todas_horas.merge(horas_pico, on='hora', how='left').fillna(0)
             horas_pico['hora_str'] = horas_pico['hora'].apply(lambda h: f"{int(h):02d}:00")
-            st.bar_chart(horas_pico.set_index('hora_str')['entradas'])
+            fig_horas = grafico_barras_horas(horas_pico)
+            st.plotly_chart(fig_horas, use_container_width=True, config={"displayModeBar": False})
         else:
-            st.caption("Sin datos suficientes.")
+            st.caption("Sin datos suficientes en los últimos 7 días.")
 
+        # --- GRÁFICO 3: TENDENCIA 30 DÍAS ---
+        st.markdown("#### 📅 Tendencia últimos 30 días")
+        hace_30 = hoy - timedelta(days=29)
+        df_30d = df[df['fecha'] >= hace_30].copy()
+
+        if not df_30d.empty:
+            entradas_dia = df_30d.groupby('fecha').size().reset_index(name='entradas')
+            todas_fechas_30 = pd.DataFrame({'fecha': pd.date_range(hace_30, hoy).date})
+            entradas_dia = todas_fechas_30.merge(entradas_dia, on='fecha', how='left').fillna(0)
+            entradas_dia['fecha_str'] = pd.to_datetime(entradas_dia['fecha']).dt.strftime('%d/%m')
+            fig_tendencia = grafico_linea_tendencia(entradas_dia)
+            st.plotly_chart(fig_tendencia, use_container_width=True, config={"displayModeBar": False})
+        else:
+            st.caption("Sin datos en los últimos 30 días.")
+
+        # --- GRÁFICO 4: TOP CARRERAS ---
         st.markdown("#### 🎓 Top 5 carreras con más uso")
         por_carrera = df[df['carrera'].notna()].groupby('carrera').size().reset_index(name='visitas')
-        por_carrera = por_carrera.sort_values('visitas', ascending=False).head(5)
+        por_carrera = por_carrera.sort_values('visitas', ascending=True).tail(5)
+
         if not por_carrera.empty:
-            por_carrera.columns = ['Carrera', 'Visitas']
-            st.dataframe(por_carrera, use_container_width=True, hide_index=True)
+            fig_carreras = grafico_barras_carreras(por_carrera)
+            st.plotly_chart(fig_carreras, use_container_width=True, config={"displayModeBar": False})
         else:
             st.caption("Sin datos de carreras aún.")
     else:
@@ -1500,8 +1663,6 @@ def panel_admin():
     )
 
     if seccion == "📊 Dashboard":
-        st.markdown("### 📊 Estado actual del estacionamiento")
-        st.caption("🟢 Datos actualizándose en tiempo real (cada 15s)")
         _dashboard_datos_vivo()
 
     elif seccion == "👥 Usuarios":
@@ -1743,7 +1904,6 @@ def panel_admin():
                                 st.error(f"🚨 ¿Eliminar **permanentemente** a **{u['nombre_completo']}** (@{u['usuario']})?")
                                 st.caption("Esta acción no se puede deshacer y borrará la cuenta del sistema.")
 
-                                # 🔒 Doble confirmación SOLO para admins
                                 if u['rol'] == 'admin':
                                     st.warning("⚠️ **Estás a punto de eliminar a un ADMINISTRADOR.** Esta acción es crítica.")
                                     texto_confirmacion = st.text_input(

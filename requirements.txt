@@ -8,3 +8,4 @@ numpy
 pandas
 openpyxl
 fpdf2
+plotly
