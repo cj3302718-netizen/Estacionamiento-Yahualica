@@ -64,8 +64,7 @@ COLOR_DORADO = "#C9A961"
 COLOR_CREMA = "#F5F0E8"
 COLOR_AZUL = "#0066B3"
 
-# Segundos de espera antes de capturar la evidencia automáticamente
-SEGUNDOS_AUTOCAPTURA = 3
+SEGUNDOS_AUTOCAPTURA = 5
 
 st.markdown("""
 <style>
@@ -133,7 +132,8 @@ st.markdown("""
     .alert-badge.advertencia { background: rgba(255,170,0,.2); color:#ffaa00; border:1px solid #ffaa00; box-shadow:0 0 10px rgba(255,170,0,.4); }
     .alert-badge.ok { background: rgba(0,255,136,.15); color:#00ff88; border:1px solid #00ff88; }
     .alert-card { background: linear-gradient(135deg, #2a0a0f 0%, #1a0505 100%); border:2px solid #ff4444; border-radius:12px; padding:12px 14px; margin-bottom:10px; animation: fadeInScale .5s ease-out; box-shadow:0 0 15px rgba(215,25,45,.3); }
-    .countdown-num { font-size:5rem; font-weight:900; text-align:center; color:#C9A961; line-height:1; animation: fadeInScale .3s ease-out; text-shadow: 0 0 30px rgba(201,169,97,.6); }
+    .countdown-num { font-size:7rem; font-weight:900; text-align:center; color:#ff4444; line-height:1; animation: fadeInScale .3s ease-out; text-shadow: 0 0 40px rgba(255,68,68,.8); }
+    .instruccion-grande { text-align:center; font-size:1.4rem; font-weight:800; color:#C9A961; padding:16px; background: linear-gradient(135deg, rgba(123,27,46,.4), rgba(215,25,45,.3)); border-radius:12px; border:2px solid #C9A961; margin:12px 0; }
 
     @media (max-width: 768px) {
         .stButton > button { min-height:48px !important; font-size:.95rem !important; padding:10px 14px !important; border-radius:12px !important; }
@@ -141,19 +141,18 @@ st.markdown("""
         .block-container { padding-left:12px !important; padding-right:12px !important; padding-top:20px !important; }
         h1 { font-size:1.5rem !important; } h2 { font-size:1.3rem !important; } h3 { font-size:1.1rem !important; }
         .logo-medallon img { width:100px; height:100px; }
-        .countdown-num { font-size:3.5rem; }
+        .countdown-num { font-size:5rem; }
+        .instruccion-grande { font-size:1.1rem; }
     }
 </style>
 """, unsafe_allow_html=True)
 
 
 # ============================================================
-# ESCÁNER QR EN TIEMPO REAL CON AUTOCAPTURA
+# ESCÁNER QR CON AUTOCAPTURA
 # ============================================================
 if WEBRTC_DISPONIBLE:
     class QRScannerProcessor(VideoProcessorBase):
-        """Detecta QRs y almacena el último frame para autocaptura."""
-
         def __init__(self):
             self.detector = cv2.QRCodeDetector()
             self._qr = None
@@ -165,16 +164,14 @@ if WEBRTC_DISPONIBLE:
             img = frame.to_ndarray(format="bgr24")
             self._frame_count += 1
 
-            # Guardar el último frame limpio (sin overlay) para la autocaptura
             with self._lock:
                 self._last_frame = img.copy()
 
-            # Detección de QR cada 3er frame
             if self._frame_count % 3 == 0:
                 with self._lock:
                     if self._qr is None:
                         try:
-                            data, points, _ = self.detector.detectAndDecode(img)
+                            data, _, _ = self.detector.detectAndDecode(img)
                             if data and len(data.strip()) > 3:
                                 self._qr = data.strip()
                         except Exception:
@@ -198,7 +195,6 @@ if WEBRTC_DISPONIBLE:
                 return qr
 
         def capture_frame_jpeg(self):
-            """Devuelve los bytes JPEG del último frame disponible."""
             with self._lock:
                 if self._last_frame is None:
                     return None
@@ -212,7 +208,6 @@ if WEBRTC_DISPONIBLE:
             return None
 
 
-# ------- ESTADO DEL FLUJO QR -------
 def _reset_qr_flow():
     st.session_state["qr_escaneado_actual"] = None
     st.session_state["qr_estado"] = "escaneando"
@@ -223,15 +218,11 @@ def _reset_qr_flow():
 
 @st.fragment(run_every="1s")
 def _poll_qr_scanner():
-    """Detecta si el procesador captó un QR y cambia al estado 'capturando'."""
     processor = st.session_state.get("qr_processor_ref")
     if processor is None:
         return
-
-    estado = st.session_state.get("qr_estado", "escaneando")
-    if estado != "escaneando":
+    if st.session_state.get("qr_estado", "escaneando") != "escaneando":
         return
-
     qr = processor.pop_qr()
     if qr:
         st.session_state["qr_escaneado_actual"] = qr
@@ -242,7 +233,6 @@ def _poll_qr_scanner():
 
 @st.fragment(run_every="1s")
 def _fragment_capturando():
-    """Cuenta regresiva + autocaptura del frame de evidencia."""
     processor = st.session_state.get("qr_processor_ref")
     tiempo_inicio = st.session_state.get("qr_tiempo_inicio") or time.time()
     transcurrido = time.time() - tiempo_inicio
@@ -250,23 +240,20 @@ def _fragment_capturando():
 
     if restante > 0:
         st.markdown(
-            f"<div class='countdown-num'>{restante}</div>",
+            "<div class='instruccion-grande'>📸 APUNTA LA CÁMARA AL VEHÍCULO AHORA</div>",
             unsafe_allow_html=True
         )
         st.markdown(
-            "<div style='text-align:center; color:#C9A961; font-weight:700; "
-            "font-size:1.1rem; margin-top:8px;'>📸 Capturando evidencia automáticamente...</div>",
+            f"<div class='countdown-num'>{restante}</div>",
             unsafe_allow_html=True
         )
-        st.caption("Apunta la cámara hacia el vehículo para la foto de evidencia.")
         st.progress(min(transcurrido / SEGUNDOS_AUTOCAPTURA, 1.0))
+        st.caption("Muévete hacia el vehículo. La foto se tomará automáticamente.")
         return
 
-    # Tiempo agotado → capturar frame
     foto = None
     if processor is not None:
         foto = processor.capture_frame_jpeg()
-
     st.session_state["qr_foto_evidencia"] = foto
     st.session_state["qr_estado"] = "confirmando"
     st.rerun()
@@ -274,15 +261,22 @@ def _fragment_capturando():
 
 def _render_escaneando():
     st.markdown("### 📷 Escáner automático de QR")
-    st.caption("Apunta la cámara al código QR del alumno. La detección es automática.")
+
+    st.info(
+        "💡 **Instrucciones:**\n\n"
+        "1️⃣ Pulsa **START** abajo (permiso de cámara del navegador)\n\n"
+        "2️⃣ Apunta la cámara al QR del alumno\n\n"
+        "3️⃣ Al detectar, verás una cuenta regresiva de "
+        f"**{SEGUNDOS_AUTOCAPTURA} segundos** para mover la cámara hacia el **vehículo**\n\n"
+        "4️⃣ La foto se toma y la captura es automática"
+    )
 
     if WEBRTC_DISPONIBLE:
-        st.markdown("🟢 **Cámara activa**")
-        st.caption("💡 Buena iluminación y el QR completo en el recuadro = mejor detección")
+        st.markdown("🟢 **Cámara lista para activar**")
 
         try:
             ctx = webrtc_streamer(
-                key="qr_scanner_caseta",
+                key="qr_scanner_caseta_v2",
                 mode=WebRtcMode.SENDRECV,
                 video_processor_factory=QRScannerProcessor,
                 media_stream_constraints={
@@ -304,7 +298,7 @@ def _render_escaneando():
         except Exception as e:
             st.warning(f"⚠️ No se pudo iniciar la cámara: {e}")
     else:
-        st.warning("⚠️ El escáner automático no está disponible en este entorno.")
+        st.warning("⚠️ El escáner automático no está disponible.")
 
     st.markdown("---")
     with st.expander("⌨️ Ingresar placas manualmente", expanded=not WEBRTC_DISPONIBLE):
@@ -328,12 +322,10 @@ def _render_escaneando():
 
 def _render_capturando():
     st.markdown("### ✅ QR detectado")
-    st.info("Se está capturando la evidencia fotográfica automáticamente.")
     _fragment_capturando()
 
 
 def _render_confirmando(user):
-    """Pantalla de confirmación con datos del alumno + foto ya capturada."""
     qr_raw = st.session_state.get("qr_escaneado_actual")
     foto_bytes = st.session_state.get("qr_foto_evidencia")
 
@@ -348,7 +340,7 @@ def _render_confirmando(user):
     placas = (data.get("placas") or "").upper().strip().replace("-", "").replace(" ", "")
 
     if not placas:
-        st.error("❌ QR inválido. No se pudieron extraer las placas.")
+        st.error("❌ QR inválido.")
         if st.button("🔄 Volver a escanear", use_container_width=True, key="qr_reset_1"):
             _reset_qr_flow()
             st.rerun()
@@ -359,65 +351,52 @@ def _render_confirmando(user):
 
     if not vehiculo:
         st.error(f"❌ No existe ningún vehículo registrado con las placas **{placas}**.")
-        st.caption("Verifica que el alumno haya registrado su vehículo en la app.")
-
         with st.expander("🔍 Ver vehículos registrados (debug)"):
             placas_db = listar_todas_las_placas()
             if not placas_db:
-                st.warning("No hay ningún vehículo registrado todavía.")
+                st.warning("No hay vehículos registrados.")
             else:
                 st.caption(f"**{len(placas_db)} vehículo(s):**")
                 for p in placas_db:
-                    icono = "🚗" if p['tipo'] == 'Auto' else "🏍️"
-                    st.markdown(f"- {icono} **{p['placas']}** — {p['nombre_completo']}")
-
+                    ic = "🚗" if p['tipo'] == 'Auto' else "🏍️"
+                    st.markdown(f"- {ic} **{p['placas']}** — {p['nombre_completo']}")
         if st.button("🔄 Volver a escanear", use_container_width=True, key="qr_reset_2"):
             _reset_qr_flow()
             st.rerun()
         return
 
-    # Datos del alumno
     st.success("✅ **Datos del alumno**")
     icono = "🚗" if vehiculo['tipo'] == 'Auto' else "🏍️"
 
-    with st.container(border=True):
-        c_icon, c_info = st.columns([1, 4])
-        with c_icon:
-            st.markdown(
-                f"<div style='text-align:center; font-size:3.5rem; padding-top:12px;'>{icono}</div>",
-                unsafe_allow_html=True
-            )
-        with c_info:
-            st.markdown(f"### {vehiculo['nombre_completo']}")
-            ca, cb = st.columns(2)
-            with ca:
-                st.markdown(f"**Matrícula:** {vehiculo['matricula'] or 'N/A'}")
-                st.markdown(f"**Carrera:** {vehiculo['carrera'] or 'N/A'}")
-            with cb:
-                st.markdown(f"**ID:** {vehiculo['id_estudiante'] or 'N/A'}")
-                st.markdown(f"**Grupo:** {vehiculo['grupo'] or 'N/A'}")
-            st.markdown(
-                f"<div style='margin-top:10px; padding:10px 14px; "
-                f"background:linear-gradient(135deg,#7B1B2E,#D7192D); "
-                f"border-radius:10px; display:inline-block;'>"
-                f"<b style='color:#C9A961; font-size:1.15rem; letter-spacing:1px;'>"
-                f"{vehiculo['tipo']} — {vehiculo['placas']}</b></div>",
-                unsafe_allow_html=True
-            )
+    st.markdown(f"### {icono} {vehiculo['nombre_completo']}")
+    c1, c2 = st.columns(2)
+    with c1:
+        st.write(f"**Matrícula:** {vehiculo['matricula'] or 'N/A'}")
+        st.write(f"**Carrera:** {vehiculo['carrera'] or 'N/A'}")
+    with c2:
+        st.write(f"**ID:** {vehiculo['id_estudiante'] or 'N/A'}")
+        st.write(f"**Grupo:** {vehiculo['grupo'] or 'N/A'}")
 
-    # Evidencia capturada automáticamente
-    st.markdown("### 📸 Evidencia capturada automáticamente")
+    st.markdown(
+        f"<div style='padding:10px 14px; background:linear-gradient(135deg,#7B1B2E,#D7192D); "
+        f"border-radius:10px; display:inline-block; margin-bottom:12px;'>"
+        f"<b style='color:#C9A961; font-size:1.15rem; letter-spacing:1px;'>"
+        f"{vehiculo['tipo']} — {vehiculo['placas']}</b></div>",
+        unsafe_allow_html=True
+    )
+
+    st.markdown("### 📸 Evidencia capturada")
     if foto_bytes:
-        st.image(foto_bytes, caption="Foto de evidencia", use_container_width=True)
+        st.image(foto_bytes, caption="Evidencia fotográfica", use_container_width=True)
     else:
-        st.warning("⚠️ No se pudo capturar la foto. Puedes reintentar.")
-        if st.button("🔄 Reintentar captura", use_container_width=True, key="qr_retry_foto"):
-            st.session_state["qr_estado"] = "capturando"
-            st.session_state["qr_tiempo_inicio"] = time.time()
-            st.session_state["qr_foto_evidencia"] = None
-            st.rerun()
+        st.warning("⚠️ No se pudo capturar la foto.")
 
-    # Determinar acción
+    if st.button("🔄 Recapturar foto", use_container_width=True, key="qr_retry_foto"):
+        st.session_state["qr_estado"] = "capturando"
+        st.session_state["qr_tiempo_inicio"] = time.time()
+        st.session_state["qr_foto_evidencia"] = None
+        st.rerun()
+
     registro_activo = obtener_registro_activo_por_vehiculo(vehiculo['id'])
     accion = "SALIDA" if registro_activo else "ENTRADA"
 
@@ -440,24 +419,23 @@ def _render_confirmando(user):
     with c_si:
         if st.button(f"✔️ Confirmar {accion}", type="primary", use_container_width=True, key="btn_conf_qr"):
             if not foto_bytes:
-                st.error("❌ No hay foto de evidencia. Reintenta la captura.")
+                st.error("❌ No hay foto de evidencia.")
             else:
                 with st.spinner(f"💾 Registrando {accion.lower()}..."):
                     foto_b64 = imagen_a_base64(foto_bytes)
                     if registro_activo:
                         registrar_salida(registro_activo['id'], vehiculo['tipo'], user['id'], foto_b64)
                         registrar_log(user['id'], "REGISTRAR_SALIDA",
-                                      f"Salida de {vehiculo['placas']} ({vehiculo['nombre_completo']}) por QR auto",
+                                      f"Salida de {vehiculo['placas']} ({vehiculo['nombre_completo']}) por QR",
                                       "Super_Registros", registro_activo['id'])
                         msg = f"✅ Salida registrada para {vehiculo['placas']}."
                     else:
                         registrar_entrada(vehiculo['id_usuario'], vehiculo['id'], vehiculo['tipo'],
                                           user['id'], foto_b64)
                         registrar_log(user['id'], "REGISTRAR_ENTRADA",
-                                      f"Entrada de {vehiculo['placas']} ({vehiculo['nombre_completo']}) por QR auto",
+                                      f"Entrada de {vehiculo['placas']} ({vehiculo['nombre_completo']}) por QR",
                                       "Super_Registros")
                         msg = f"✅ Entrada registrada para {vehiculo['placas']}."
-
                 _reset_qr_flow()
                 set_flash("success", msg)
                 st.rerun()
@@ -468,9 +446,7 @@ def _render_confirmando(user):
 
 
 def _seccion_escaner_qr(user):
-    """Máquina de estados: escaneando → capturando → confirmando → escaneando."""
     estado = st.session_state.get("qr_estado", "escaneando")
-
     if estado == "escaneando":
         _render_escaneando()
     elif estado == "capturando":
@@ -478,21 +454,19 @@ def _seccion_escaner_qr(user):
     elif estado == "confirmando":
         _render_confirmando(user)
     else:
-        # Fallback
         _reset_qr_flow()
         st.rerun()
 
 
 # ============================================================
-# PDF PROFESIONAL DE REPORTES (sin Excel)
+# PDF PROFESIONAL
 # ============================================================
 def generar_pdf_reporte(df, titulo, subtitulo=""):
     class PDF(FPDF):
         def header(self):
             self.set_fill_color(123, 27, 46)
             self.rect(0, 0, 297, 22, "F")
-            self.set_y(6)
-            self.set_x(10)
+            self.set_y(6); self.set_x(10)
             self.set_font("Helvetica", "B", 12)
             self.set_text_color(201, 169, 97)
             self.cell(0, 6, "CUYPARK - Colegio Universitario de Yahualica", ln=1)
@@ -571,7 +545,7 @@ def generar_pdf_reporte(df, titulo, subtitulo=""):
 
 
 # ============================================================
-# HELPERS GENERALES
+# HELPERS
 # ============================================================
 def selector_rango_fechas(key_prefix):
     hoy = date.today()
@@ -596,32 +570,32 @@ def selector_rango_fechas(key_prefix):
 
     opcion = st.session_state[estado_key]
     if opcion == "hoy":
-        fecha_desde, fecha_hasta = hoy, hoy
+        fd, fh = hoy, hoy
     elif opcion == "7d":
-        fecha_desde, fecha_hasta = hoy - timedelta(days=7), hoy
+        fd, fh = hoy - timedelta(days=7), hoy
     elif opcion == "mes":
-        fecha_desde, fecha_hasta = hoy.replace(day=1), hoy
+        fd, fh = hoy.replace(day=1), hoy
     else:
-        fecha_desde, fecha_hasta = None, None
+        fd, fh = None, None
 
     if opcion == "hoy":
         st.info(f"📅 Mostrando registros de **hoy** ({hoy.strftime('%d/%m/%Y')})")
     elif opcion == "7d":
-        st.info(f"📅 Mostrando registros de los **últimos 7 días** ({fecha_desde.strftime('%d/%m/%Y')} → {fecha_hasta.strftime('%d/%m/%Y')})")
+        st.info(f"📅 **Últimos 7 días** ({fd.strftime('%d/%m/%Y')} → {fh.strftime('%d/%m/%Y')})")
     elif opcion == "mes":
-        st.info(f"📅 Mostrando registros de **{hoy.strftime('%B %Y').capitalize()}**")
+        st.info(f"📅 **{hoy.strftime('%B %Y').capitalize()}**")
     else:
-        st.info("📅 Mostrando **todos los registros** (sin filtro de fecha)")
+        st.info("📅 **Todos los registros** (sin filtro de fecha)")
 
-    return fecha_desde, fecha_hasta
+    return fd, fh
 
 
 def mostrar_paginacion_superior(key, por_pagina_options=(10, 20, 50, 100)):
     key_pp = f"{key}_por_pagina"
     if key_pp not in st.session_state:
         st.session_state[key_pp] = 20
-    col1, col2 = st.columns([1, 3])
-    with col1:
+    c1, c2 = st.columns([1, 3])
+    with c1:
         st.session_state[key_pp] = st.selectbox(
             "Por página", por_pagina_options,
             index=por_pagina_options.index(st.session_state[key_pp]),
@@ -659,12 +633,12 @@ def notificar_entrada_reciente(user):
         minutos = int(delta.total_seconds() / 60)
     except Exception:
         minutos = 999
-    icono = "🚗" if registro['tipo'] == 'Auto' else "🏍️"
+    ic = "🚗" if registro['tipo'] == 'Auto' else "🏍️"
     try:
         if minutos <= 5:
             st.toast(f"🎉 ¡Bienvenido! Tu {registro['tipo'].lower()} {registro['placas']} acaba de entrar", icon="🎉")
         elif minutos <= 60:
-            st.toast(f"{icono} Tu vehículo entró hace {minutos} min", icon="ℹ️")
+            st.toast(f"{ic} Tu vehículo entró hace {minutos} min", icon="ℹ️")
     except AttributeError:
         pass
     st.session_state[clave] = True
@@ -673,25 +647,19 @@ def notificar_entrada_reciente(user):
 def formatear_tiempo_dentro(hora_entrada):
     try:
         delta = datetime.now() - hora_entrada
-        minutos = int(delta.total_seconds() / 60)
-        if minutos < 1:
-            return "hace unos segundos"
-        elif minutos < 60:
-            return f"hace {minutos} min"
+        m = int(delta.total_seconds() / 60)
+        if m < 1: return "hace unos segundos"
+        elif m < 60: return f"hace {m} min"
         else:
-            horas = minutos // 60
-            mins_resto = minutos % 60
-            if mins_resto == 0:
-                return f"desde hace {horas}h"
-            return f"desde hace {horas}h {mins_resto}min"
+            h = m // 60; r = m % 60
+            return f"desde hace {h}h" if r == 0 else f"desde hace {h}h {r}min"
     except Exception:
         return ""
 
 
 def calcular_horas_dentro(hora_entrada):
     try:
-        delta = datetime.now() - hora_entrada
-        return delta.total_seconds() / 3600
+        return (datetime.now() - hora_entrada).total_seconds() / 3600
     except Exception:
         return 0
 
@@ -701,103 +669,80 @@ def obtener_badge_alerta(horas):
         return f'<span class="alert-badge critico">🚨 {horas:.1f}h DENTRO</span>'
     elif horas >= 8:
         return f'<span class="alert-badge advertencia">⚠️ {horas:.1f}h DENTRO</span>'
-    else:
-        return f'<span class="alert-badge ok">✓ {horas:.1f}h</span>'
+    return f'<span class="alert-badge ok">✓ {horas:.1f}h</span>'
 
 
-def validar_nombre(nombre):
-    if not nombre or not nombre.strip():
-        return False, "El nombre es obligatorio."
-    patron = r"^[A-Za-zÁÉÍÓÚáéíóúÑñÜü\s\-\.']{2,100}$"
-    if not re.match(patron, nombre.strip()):
+def validar_nombre(n):
+    if not n or not n.strip(): return False, "El nombre es obligatorio."
+    if not re.match(r"^[A-Za-zÁÉÍÓÚáéíóúÑñÜü\s\-\.']{2,100}$", n.strip()):
         return False, "Solo letras, espacios, acentos y guiones (2-100 caracteres)."
     return True, ""
 
 
-def validar_usuario(usuario):
-    if not usuario or not usuario.strip():
-        return False, "El usuario es obligatorio."
-    patron = r"^[a-zA-Z0-9._]{3,30}$"
-    if not re.match(patron, usuario.strip()):
-        return False, "3-30 caracteres: letras, números, punto o guión bajo (sin espacios)."
+def validar_usuario(u):
+    if not u or not u.strip(): return False, "El usuario es obligatorio."
+    if not re.match(r"^[a-zA-Z0-9._]{3,30}$", u.strip()):
+        return False, "3-30 caracteres: letras, números, punto o guión bajo."
     return True, ""
 
 
-def validar_password(password, minimo=3):
-    if not password:
-        return False, "La contraseña es obligatoria."
-    if len(password) < minimo:
-        return False, f"Debe tener al menos {minimo} caracteres."
+def validar_password(p, minimo=3):
+    if not p: return False, "La contraseña es obligatoria."
+    if len(p) < minimo: return False, f"Debe tener al menos {minimo} caracteres."
     return True, ""
 
 
-def validar_telefono(telefono):
-    if not telefono or not telefono.strip():
-        return True, ""
-    solo_digitos = re.sub(r"\D", "", telefono)
-    if len(solo_digitos) != 10:
-        return False, "Debe tener exactamente 10 dígitos (ej. 444-123-4567)."
+def validar_telefono(t):
+    if not t or not t.strip(): return True, ""
+    sd = re.sub(r"\D", "", t)
+    if len(sd) != 10: return False, "Debe tener exactamente 10 dígitos."
     return True, ""
 
 
-def validar_matricula(matricula):
-    if not matricula or not matricula.strip():
-        return True, ""
-    patron = r"^[A-Za-z0-9\-]{4,15}$"
-    if not re.match(patron, matricula.strip()):
+def validar_matricula(m):
+    if not m or not m.strip(): return True, ""
+    if not re.match(r"^[A-Za-z0-9\-]{4,15}$", m.strip()):
         return False, "4-15 caracteres alfanuméricos."
     return True, ""
 
 
-def validar_id_estudiante(id_estudiante):
-    if not id_estudiante or not id_estudiante.strip():
-        return True, ""
-    patron = r"^[A-Za-z0-9\-]{4,20}$"
-    if not re.match(patron, id_estudiante.strip()):
-        return False, "4-20 caracteres alfanuméricos (ej. ALU-0001)."
+def validar_id_estudiante(i):
+    if not i or not i.strip(): return True, ""
+    if not re.match(r"^[A-Za-z0-9\-]{4,20}$", i.strip()):
+        return False, "4-20 caracteres alfanuméricos."
     return True, ""
 
 
-def validar_placas(placas):
-    if not placas or not placas.strip():
-        return False, "Las placas son obligatorias."
-    limpio = placas.strip().upper().replace("-", "").replace(" ", "")
-    patron = r"^[A-Z]{3}[0-9]{3,4}[A-Z]?$"
-    if not re.match(patron, limpio):
+def validar_placas(p):
+    if not p or not p.strip(): return False, "Las placas son obligatorias."
+    limpio = p.strip().upper().replace("-", "").replace(" ", "")
+    if not re.match(r"^[A-Z]{3}[0-9]{3,4}[A-Z]?$", limpio):
         return False, "Formato no válido. Ejemplo: ABC-1234"
     return True, ""
 
 
-def validar_carrera(carrera):
-    if not carrera or not carrera.strip():
-        return True, ""
-    if len(carrera.strip()) < 2:
-        return False, "Mínimo 2 caracteres."
-    if len(carrera.strip()) > 100:
-        return False, "Máximo 100 caracteres."
+def validar_carrera(c):
+    if not c or not c.strip(): return True, ""
+    if len(c.strip()) < 2: return False, "Mínimo 2 caracteres."
+    if len(c.strip()) > 100: return False, "Máximo 100 caracteres."
     return True, ""
 
 
-def validar_grupo(grupo):
-    if not grupo or not grupo.strip():
-        return True, ""
-    if len(grupo.strip()) > 20:
-        return False, "Máximo 20 caracteres."
+def validar_grupo(g):
+    if not g or not g.strip(): return True, ""
+    if len(g.strip()) > 20: return False, "Máximo 20 caracteres."
     return True, ""
 
 
-def mostrar_validacion(valor, validador, obligatorio=True):
-    if not valor or not valor.strip():
-        if obligatorio:
-            return False
-        return True
-    ok, msg = validador(valor)
+def mostrar_validacion(v, validador, obligatorio=True):
+    if not v or not v.strip():
+        return False if obligatorio else True
+    ok, msg = validador(v)
     if ok:
         st.markdown('<div class="val-ok">✅ Campo válido</div>', unsafe_allow_html=True)
         return True
-    else:
-        st.markdown(f'<div class="val-error">❌ {msg}</div>', unsafe_allow_html=True)
-        return False
+    st.markdown(f'<div class="val-error">❌ {msg}</div>', unsafe_allow_html=True)
+    return False
 
 
 def limpiar_campos(keys):
@@ -806,50 +751,46 @@ def limpiar_campos(keys):
             del st.session_state[k]
 
 
-def grafico_dona_ocupacion(autos_ocupados, autos_libres, motos_ocupados, motos_libres):
-    labels = ["🚗 Autos", "🏍️ Motos", "Libres"]
-    values = [autos_ocupados, motos_ocupados, autos_libres + motos_libres]
-    colors = [COLOR_VINO_CLARO, COLOR_DORADO, "#2a2a2a"]
+def grafico_dona_ocupacion(ao, al, mo, ml):
     fig = go.Figure(data=[go.Pie(
-        labels=labels, values=values, hole=0.6,
-        marker=dict(colors=colors, line=dict(color="#0d0407", width=2)),
-        textinfo="label+percent",
-        textfont=dict(size=11, color=COLOR_CREMA),
+        labels=["🚗 Autos", "🏍️ Motos", "Libres"],
+        values=[ao, mo, al + ml], hole=0.6,
+        marker=dict(colors=[COLOR_VINO_CLARO, COLOR_DORADO, "#2a2a2a"], line=dict(color="#0d0407", width=2)),
+        textinfo="label+percent", textfont=dict(size=11, color=COLOR_CREMA),
         hovertemplate="<b>%{label}</b><br>Cantidad: %{value}<br>%{percent}<extra></extra>"
     )])
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font=dict(color=COLOR_CREMA, size=11),
-        margin=dict(l=10, r=10, t=10, b=10), height=280, showlegend=True,
+        margin=dict(l=10, r=10, t=10, b=10), height=280,
         legend=dict(orientation="h", yanchor="bottom", y=-0.1, xanchor="center", x=0.5, font=dict(size=10, color=COLOR_CREMA)),
-        annotations=[dict(text=f"<b>{autos_ocupados + motos_ocupados}</b><br><span style='font-size:10px'>Ocupados</span>",
+        annotations=[dict(text=f"<b>{ao + mo}</b><br><span style='font-size:10px'>Ocupados</span>",
                           x=0.5, y=0.5, font=dict(size=18, color=COLOR_DORADO), showarrow=False)]
     )
     return fig
 
 
-def grafico_barras_horas(df_horas):
+def grafico_barras_horas(df):
     fig = go.Figure(data=[go.Bar(
-        x=df_horas["hora_str"], y=df_horas["entradas"],
-        marker=dict(color=df_horas["entradas"], colorscale=[[0, COLOR_VINO], [1, COLOR_DORADO]], line=dict(color=COLOR_DORADO, width=1)),
-        text=df_horas["entradas"], textposition="outside", textfont=dict(color=COLOR_CREMA, size=10),
+        x=df["hora_str"], y=df["entradas"],
+        marker=dict(color=df["entradas"], colorscale=[[0, COLOR_VINO], [1, COLOR_DORADO]], line=dict(color=COLOR_DORADO, width=1)),
+        text=df["entradas"], textposition="outside", textfont=dict(color=COLOR_CREMA, size=10),
         hovertemplate="<b>%{x}</b><br>Entradas: %{y}<extra></extra>"
     )])
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font=dict(color=COLOR_CREMA, size=11),
-        xaxis=dict(title="", gridcolor="rgba(201,169,97,0.1)", tickfont=dict(color=COLOR_CREMA, size=10)),
-        yaxis=dict(title="", gridcolor="rgba(201,169,97,0.1)", tickfont=dict(color=COLOR_CREMA, size=10)),
+        xaxis=dict(gridcolor="rgba(201,169,97,0.1)", tickfont=dict(color=COLOR_CREMA, size=10)),
+        yaxis=dict(gridcolor="rgba(201,169,97,0.1)", tickfont=dict(color=COLOR_CREMA, size=10)),
         margin=dict(l=10, r=10, t=20, b=10), height=280, showlegend=False
     )
     return fig
 
 
-def grafico_linea_tendencia(df_dias):
+def grafico_linea_tendencia(df):
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=df_dias["fecha_str"], y=df_dias["entradas"],
-        mode="lines+markers",
+        x=df["fecha_str"], y=df["entradas"], mode="lines+markers",
         line=dict(color=COLOR_DORADO, width=3, shape="spline"),
         marker=dict(color=COLOR_VINO_CLARO, size=10, line=dict(color=COLOR_DORADO, width=2)),
         fill="tozeroy", fillcolor="rgba(123,27,46,0.25)",
@@ -865,11 +806,11 @@ def grafico_linea_tendencia(df_dias):
     return fig
 
 
-def grafico_barras_carreras(df_carreras):
+def grafico_barras_carreras(df):
     fig = go.Figure(data=[go.Bar(
-        y=df_carreras["carrera"], x=df_carreras["visitas"], orientation="h",
-        marker=dict(color=df_carreras["visitas"], colorscale=[[0, COLOR_VINO], [1, COLOR_DORADO]], line=dict(color=COLOR_DORADO, width=1)),
-        text=df_carreras["visitas"], textposition="outside", textfont=dict(color=COLOR_CREMA, size=10),
+        y=df["carrera"], x=df["visitas"], orientation="h",
+        marker=dict(color=df["visitas"], colorscale=[[0, COLOR_VINO], [1, COLOR_DORADO]], line=dict(color=COLOR_DORADO, width=1)),
+        text=df["visitas"], textposition="outside", textfont=dict(color=COLOR_CREMA, size=10),
         hovertemplate="<b>%{y}</b><br>Visitas: %{x}<extra></extra>"
     )])
     fig.update_layout(
@@ -890,9 +831,9 @@ def generar_pdf_qr(user, vehiculo, qr_bytes):
             try:
                 with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as _f:
                     _f.write(urllib.request.urlopen(LOGO_ESCUDO_URL, timeout=5).read())
-                    _logo_path = _f.name
-                self.image(_logo_path, x=10, y=4, w=20)
-                try: os.unlink(_logo_path)
+                    lp = _f.name
+                self.image(lp, x=10, y=4, w=20)
+                try: os.unlink(lp)
                 except Exception: pass
             except Exception:
                 pass
@@ -926,37 +867,32 @@ def generar_pdf_qr(user, vehiculo, qr_bytes):
     pdf.line(60, pdf.get_y(), 150, pdf.get_y())
     pdf.ln(6)
 
-    pdf.set_font("Helvetica", "B", 12)
-    pdf.set_text_color(123, 27, 46)
+    pdf.set_font("Helvetica", "B", 12); pdf.set_text_color(123, 27, 46)
     pdf.cell(0, 7, "Datos del Alumno", ln=1)
     pdf.set_font("Helvetica", "", 10); pdf.set_text_color(40, 40, 40)
-    for etiqueta, valor in [
-        ("Nombre completo:", user.get('nombre_completo') or 'N/A'),
-        ("ID Estudiante:", user.get('id_estudiante') or 'N/A'),
-        ("Matrícula:", user.get('matricula') or 'N/A'),
-        ("Carrera:", user.get('carrera') or 'N/A'),
-        ("Grupo:", user.get('grupo') or 'N/A'),
-    ]:
-        pdf.cell(45, 6, etiqueta, border=0)
+    for et, v in [("Nombre completo:", user.get('nombre_completo') or 'N/A'),
+                  ("ID Estudiante:", user.get('id_estudiante') or 'N/A'),
+                  ("Matrícula:", user.get('matricula') or 'N/A'),
+                  ("Carrera:", user.get('carrera') or 'N/A'),
+                  ("Grupo:", user.get('grupo') or 'N/A')]:
+        pdf.cell(45, 6, et, border=0)
         pdf.set_font("Helvetica", "B", 10)
-        pdf.cell(0, 6, str(valor), ln=1)
+        pdf.cell(0, 6, str(v), ln=1)
         pdf.set_font("Helvetica", "", 10)
 
     pdf.ln(4)
     pdf.set_font("Helvetica", "B", 12); pdf.set_text_color(123, 27, 46)
     pdf.cell(0, 7, "Datos del Vehículo", ln=1)
     pdf.set_font("Helvetica", "", 10); pdf.set_text_color(40, 40, 40)
-    for etiqueta, valor, es_placas in [
-        ("Tipo:", vehiculo.get('tipo') or 'N/A', False),
-        ("Placas:", vehiculo.get('placas') or 'N/A', True),
-        ("Marca:", vehiculo.get('marca') or 'N/A', False),
-        ("Modelo:", vehiculo.get('modelo') or 'N/A', False),
-        ("Color:", vehiculo.get('color') or 'N/A', False),
-    ]:
-        pdf.cell(45, 6, etiqueta, border=0)
-        pdf.set_font("Helvetica", "B", 12 if es_placas else 10)
-        if es_placas: pdf.set_text_color(123, 27, 46)
-        pdf.cell(0, 6, str(valor), ln=1)
+    for et, v, ep in [("Tipo:", vehiculo.get('tipo') or 'N/A', False),
+                       ("Placas:", vehiculo.get('placas') or 'N/A', True),
+                       ("Marca:", vehiculo.get('marca') or 'N/A', False),
+                       ("Modelo:", vehiculo.get('modelo') or 'N/A', False),
+                       ("Color:", vehiculo.get('color') or 'N/A', False)]:
+        pdf.cell(45, 6, et, border=0)
+        pdf.set_font("Helvetica", "B", 12 if ep else 10)
+        if ep: pdf.set_text_color(123, 27, 46)
+        pdf.cell(0, 6, str(v), ln=1)
         pdf.set_font("Helvetica", "", 10); pdf.set_text_color(40, 40, 40)
 
     pdf.ln(8)
@@ -964,45 +900,35 @@ def generar_pdf_qr(user, vehiculo, qr_bytes):
     pdf.cell(0, 7, "Código QR de Acceso", ln=1, align="C")
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
-        tmp.write(qr_bytes); tmp_path = tmp.name
-    qr_size = 90
-    qr_x = (210 - qr_size) / 2
-    qr_y = pdf.get_y() + 3
+        tmp.write(qr_bytes); tp = tmp.name
+    qs = 90
+    qx = (210 - qs) / 2
+    qy = pdf.get_y() + 3
     pdf.set_draw_color(201, 169, 97); pdf.set_line_width(0.6)
-    pdf.rect(qr_x - 3, qr_y - 3, qr_size + 6, qr_size + 6)
-    pdf.image(tmp_path, x=qr_x, y=qr_y, w=qr_size, h=qr_size)
-    try: os.unlink(tmp_path)
+    pdf.rect(qx - 3, qy - 3, qs + 6, qs + 6)
+    pdf.image(tp, x=qx, y=qy, w=qs, h=qs)
+    try: os.unlink(tp)
     except Exception: pass
-    pdf.set_y(qr_y + qr_size + 8)
+    pdf.set_y(qy + qs + 8)
     pdf.set_font("Helvetica", "I", 9); pdf.set_text_color(100, 100, 100)
     pdf.multi_cell(0, 5,
-        "Presenta este código QR en la caseta del estacionamiento tanto al entrar como al salir. "
-        "Puedes imprimirlo o mostrarlo desde tu dispositivo móvil.",
-        align="C")
+        "Presenta este código QR en la caseta al entrar y salir. "
+        "Puedes imprimirlo o mostrarlo desde tu móvil.", align="C")
     return bytes(pdf.output())
 
 
 # ============================================================
-# SESIÓN / FLASH
+# SESIÓN
 # ============================================================
-if 'usuario' not in st.session_state:
-    st.session_state.usuario = None
-if 'qr_generado' not in st.session_state:
-    st.session_state.qr_generado = None
-if 'flash' not in st.session_state:
-    st.session_state.flash = None
-if 'qr_escaneado_actual' not in st.session_state:
-    st.session_state.qr_escaneado_actual = None
-if 'qr_processor_ref' not in st.session_state:
-    st.session_state.qr_processor_ref = None
-if 'qr_estado' not in st.session_state:
-    st.session_state.qr_estado = "escaneando"
-if 'qr_tiempo_inicio' not in st.session_state:
-    st.session_state.qr_tiempo_inicio = None
-if 'qr_foto_evidencia' not in st.session_state:
-    st.session_state.qr_foto_evidencia = None
-if 'qr_vehiculo' not in st.session_state:
-    st.session_state.qr_vehiculo = None
+if 'usuario' not in st.session_state: st.session_state.usuario = None
+if 'qr_generado' not in st.session_state: st.session_state.qr_generado = None
+if 'flash' not in st.session_state: st.session_state.flash = None
+if 'qr_escaneado_actual' not in st.session_state: st.session_state.qr_escaneado_actual = None
+if 'qr_processor_ref' not in st.session_state: st.session_state.qr_processor_ref = None
+if 'qr_estado' not in st.session_state: st.session_state.qr_estado = "escaneando"
+if 'qr_tiempo_inicio' not in st.session_state: st.session_state.qr_tiempo_inicio = None
+if 'qr_foto_evidencia' not in st.session_state: st.session_state.qr_foto_evidencia = None
+if 'qr_vehiculo' not in st.session_state: st.session_state.qr_vehiculo = None
 
 if 'tabla_mensajes_ok' not in st.session_state:
     try:
@@ -1014,32 +940,25 @@ if 'tabla_mensajes_ok' not in st.session_state:
 
 def mostrar_flash():
     if st.session_state.flash:
-        tipo, texto = st.session_state.flash
-        if tipo == "success": st.success(texto)
-        elif tipo == "error": st.error(texto)
-        elif tipo == "warning": st.warning(texto)
-        elif tipo == "info": st.info(texto)
+        t, x = st.session_state.flash
+        if t == "success": st.success(x)
+        elif t == "error": st.error(x)
+        elif t == "warning": st.warning(x)
+        elif t == "info": st.info(x)
         st.session_state.flash = None
 
 
-def set_flash(tipo, texto):
-    st.session_state.flash = (tipo, texto)
+def set_flash(t, x): st.session_state.flash = (t, x)
 
 
 def mostrar_branding_login():
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
+    c1, c2, c3 = st.columns([1, 2, 1])
+    with c2:
         st.markdown(f"""
             <div style="text-align: center; margin-bottom: 24px;">
-                <div class="logo-medallon">
-                    <img src="{LOGO_ESCUDO_URL}" alt="Colegio Universitario de Yahualica">
-                </div>
-                <div style="color: #C9A961; font-size: 0.7rem; letter-spacing: 4px; text-transform: uppercase; font-weight: 600; margin-top: 4px;">
-                    Colegio Universitario
-                </div>
-                <div style="color: #C9A961; font-size: 1.6rem; font-weight: 800; letter-spacing: 3px; margin-top: 2px;">
-                    DE YAHUALICA
-                </div>
+                <div class="logo-medallon"><img src="{LOGO_ESCUDO_URL}" alt="CUY"></div>
+                <div style="color: #C9A961; font-size: 0.7rem; letter-spacing: 4px; text-transform: uppercase; font-weight: 600; margin-top: 4px;">Colegio Universitario</div>
+                <div style="color: #C9A961; font-size: 1.6rem; font-weight: 800; letter-spacing: 3px; margin-top: 2px;">DE YAHUALICA</div>
                 <div style="width: 80px; height: 2px; background: linear-gradient(90deg, transparent, #C9A961, transparent); margin: 12px auto 0 auto;"></div>
             </div>
         """, unsafe_allow_html=True)
@@ -1059,50 +978,44 @@ def mostrar_marca_cudy():
     """
 
 
-def cb_mostrar_confirm(key): st.session_state[key] = True
-def cb_ocultar_confirm(key): st.session_state[key] = False
+def cb_mostrar_confirm(k): st.session_state[k] = True
+def cb_ocultar_confirm(k): st.session_state[k] = False
 
 
-def cb_eliminar_vehiculo(vid, user_id, tipo, placas):
+def cb_eliminar_vehiculo(vid, uid, tipo, placas):
     ok, msg = eliminar_vehiculo(vid)
     st.session_state[f"confirmar_elim_veh_{vid}"] = False
     if ok:
-        registrar_log(user_id, "ELIMINAR_VEHICULO", f"Vehículo {tipo} {placas} eliminado", "Super_Vehiculos", vid)
-        st.session_state.flash = ("success", "Vehículo eliminado correctamente.")
+        registrar_log(uid, "ELIMINAR_VEHICULO", f"Vehículo {tipo} {placas} eliminado", "Super_Vehiculos", vid)
+        st.session_state.flash = ("success", "Vehículo eliminado.")
     else:
         st.session_state.flash = ("error", msg)
 
 
-def cb_activar_usuario(uid, admin_id, admin_user, target_user, target_name):
+def cb_activar_usuario(uid, aid, au, tu, tn):
     ok, msg = activar_usuario(uid)
     if ok:
-        registrar_log(admin_id, "REACTIVAR_USUARIO",
-                      f"Cuenta @{target_user} ({target_name}) reactivada por @{admin_user}",
-                      "Super_Usuarios", uid)
+        registrar_log(aid, "REACTIVAR_USUARIO", f"Cuenta @{tu} reactivada por @{au}", "Super_Usuarios", uid)
         st.session_state.flash = ("success", msg)
     else:
         st.session_state.flash = ("error", msg)
 
 
-def cb_desactivar_usuario(uid, admin_id, admin_user, target_user, target_name):
+def cb_desactivar_usuario(uid, aid, au, tu, tn):
     ok, msg = desactivar_usuario(uid)
     st.session_state[f"confirmar_desactivar_{uid}"] = False
     if ok:
-        registrar_log(admin_id, "DESACTIVAR_USUARIO",
-                      f"Cuenta @{target_user} ({target_name}) desactivada por @{admin_user}",
-                      "Super_Usuarios", uid)
+        registrar_log(aid, "DESACTIVAR_USUARIO", f"Cuenta @{tu} desactivada por @{au}", "Super_Usuarios", uid)
         st.session_state.flash = ("success", msg)
     else:
         st.session_state.flash = ("error", msg)
 
 
-def cb_eliminar_usuario(uid, admin_id, admin_user, target_user, target_name):
+def cb_eliminar_usuario(uid, aid, au, tu, tn):
     ok, msg = eliminar_usuario(uid)
     st.session_state[f"confirmar_eliminar_{uid}"] = False
     if ok:
-        registrar_log(admin_id, "ELIMINAR_USUARIO",
-                      f"Cuenta @{target_user} ({target_name}) eliminada permanentemente por @{admin_user}",
-                      "Super_Usuarios", uid)
+        registrar_log(aid, "ELIMINAR_USUARIO", f"Cuenta @{tu} eliminada por @{au}", "Super_Usuarios", uid)
         st.session_state.flash = ("success", msg)
     else:
         st.session_state.flash = ("error", msg)
@@ -1119,39 +1032,30 @@ def cerrar_sesion():
 def mostrar_mi_cuenta(user):
     with st.expander("🔧 Mi cuenta — Contraseña y contacto"):
         st.markdown("#### 📱 Actualizar mi teléfono")
-        st.caption("Solo el teléfono puede ser editado por ti. Otros datos son oficiales.")
-
-        tel_actual = user.get('telefono') or ""
-        st.caption(f"Teléfono actual registrado: **{tel_actual if tel_actual else '(sin teléfono)'}**")
-
-        nuevo_tel = st.text_input("Nuevo teléfono (10 dígitos)", value=tel_actual,
-                                   key=f"mt_tel_{user['id']}", placeholder="444-123-4567")
-
-        tel_ok = False
-        if nuevo_tel and nuevo_tel.strip():
-            ok, msg = validar_telefono(nuevo_tel)
+        st.caption("Solo el teléfono puede ser editado por ti.")
+        ta = user.get('telefono') or ""
+        st.caption(f"Teléfono actual: **{ta if ta else '(sin teléfono)'}**")
+        nt = st.text_input("Nuevo teléfono (10 dígitos)", value=ta,
+                           key=f"mt_tel_{user['id']}", placeholder="444-123-4567")
+        tok = False
+        if nt and nt.strip():
+            ok, msg = validar_telefono(nt)
             if ok:
                 st.markdown('<div class="val-ok">✅ Teléfono válido</div>', unsafe_allow_html=True)
-                tel_ok = True
+                tok = True
             else:
                 st.markdown(f'<div class="val-error">❌ {msg}</div>', unsafe_allow_html=True)
         else:
             st.markdown('<div class="val-error">❌ El teléfono es obligatorio</div>', unsafe_allow_html=True)
-
-        tel_modificado = (nuevo_tel.strip() != tel_actual.strip()) if nuevo_tel else False
-        if not tel_modificado and tel_ok:
-            st.caption("💡 No has modificado el teléfono.")
-
-        todos_tel_ok = tel_ok and tel_modificado
-
+        tm = (nt.strip() != ta.strip()) if nt else False
+        ttok = tok and tm
         if st.button("💾 Guardar teléfono", use_container_width=True, type="primary",
-                     disabled=not todos_tel_ok, key=f"mt_btn_{user['id']}"):
-            ok, msg = actualizar_telefono_usuario(user['id'], nuevo_tel.strip())
+                     disabled=not ttok, key=f"mt_btn_{user['id']}"):
+            ok, msg = actualizar_telefono_usuario(user['id'], nt.strip())
             if ok:
                 registrar_log(user['id'], "ACTUALIZAR_TELEFONO",
-                              f"@{user['usuario']} actualizó su teléfono",
-                              "Super_Usuarios", user['id'])
-                st.session_state.usuario['telefono'] = nuevo_tel.strip()
+                              f"@{user['usuario']} actualizó teléfono", "Super_Usuarios", user['id'])
+                st.session_state.usuario['telefono'] = nt.strip()
                 limpiar_campos([f"mt_tel_{user['id']}"])
                 set_flash("success", f"✅ {msg}")
                 st.rerun()
@@ -1159,38 +1063,31 @@ def mostrar_mi_cuenta(user):
                 st.error(f"❌ {msg}")
 
         st.markdown("---")
-        st.markdown("#### 🔑 Cambiar mi contraseña")
-        st.caption("Actualiza tu contraseña personal. Necesitas conocer la actual.")
-
-        p_actual = st.text_input("Contraseña actual", type="password", key=f"cp_act_{user['id']}")
-        p_nueva = st.text_input("Nueva contraseña", type="password", key=f"cp_new_{user['id']}")
-        p_nueva_ok = False
-        if p_nueva:
-            if len(p_nueva) < 3:
+        st.markdown("#### 🔑 Cambiar contraseña")
+        pa = st.text_input("Contraseña actual", type="password", key=f"cp_act_{user['id']}")
+        pn = st.text_input("Nueva contraseña", type="password", key=f"cp_new_{user['id']}")
+        pn_ok = False
+        if pn:
+            if len(pn) < 3:
                 st.markdown('<div class="val-error">❌ Mínimo 3 caracteres</div>', unsafe_allow_html=True)
             else:
-                st.markdown('<div class="val-ok">✅ Contraseña válida</div>', unsafe_allow_html=True)
-                p_nueva_ok = True
-
-        p_confirm = st.text_input("Confirmar nueva contraseña", type="password", key=f"cp_conf_{user['id']}")
-        p_conf_ok = False
-        if p_confirm:
-            if p_confirm == p_nueva:
-                st.markdown('<div class="val-ok">✅ Las contraseñas coinciden</div>', unsafe_allow_html=True)
-                p_conf_ok = True
+                st.markdown('<div class="val-ok">✅ Válida</div>', unsafe_allow_html=True)
+                pn_ok = True
+        pc = st.text_input("Confirmar nueva", type="password", key=f"cp_conf_{user['id']}")
+        pc_ok = False
+        if pc:
+            if pc == pn:
+                st.markdown('<div class="val-ok">✅ Coinciden</div>', unsafe_allow_html=True)
+                pc_ok = True
             else:
-                st.markdown('<div class="val-error">❌ Las contraseñas no coinciden</div>', unsafe_allow_html=True)
-
-        actual_ok = bool(p_actual)
-        todos_pass_ok = actual_ok and p_nueva_ok and p_conf_ok
-
+                st.markdown('<div class="val-error">❌ No coinciden</div>', unsafe_allow_html=True)
+        tpk = bool(pa) and pn_ok and pc_ok
         if st.button("🔐 Cambiar contraseña", use_container_width=True, type="primary",
-                     disabled=not todos_pass_ok, key=f"cp_btn_{user['id']}"):
-            ok, msg = cambiar_password_usuario(user['id'], p_actual, p_nueva)
+                     disabled=not tpk, key=f"cp_btn_{user['id']}"):
+            ok, msg = cambiar_password_usuario(user['id'], pa, pn)
             if ok:
                 registrar_log(user['id'], "CAMBIAR_PASSWORD",
-                              f"@{user['usuario']} cambió su contraseña",
-                              "Super_Usuarios", user['id'])
+                              f"@{user['usuario']} cambió contraseña", "Super_Usuarios", user['id'])
                 limpiar_campos([f"cp_act_{user['id']}", f"cp_new_{user['id']}", f"cp_conf_{user['id']}"])
                 set_flash("success", f"✅ {msg}")
                 st.rerun()
@@ -1205,28 +1102,28 @@ def pantalla_login():
     mostrar_flash()
 
     with st.spinner("🔐 Verificando sistema..."):
-        hay_admin = contar_admins() > 0
+        ha = contar_admins() > 0
 
-    if not hay_admin:
+    if not ha:
         with st.expander("🚨 Configuración inicial: Crear el primer Administrador", expanded=True):
-            st.warning("No existe ningún administrador. Crea uno para poder gestionar el sistema.")
-            usuario_admin = st.text_input("Usuario admin", key="pa_u")
-            u_ok = mostrar_validacion(usuario_admin, validar_usuario, obligatorio=True)
-            pass_admin = st.text_input("Contraseña", type="password", key="pa_p")
-            p_ok = mostrar_validacion(pass_admin, validar_password, obligatorio=True)
-            nombre_admin = st.text_input("Nombre completo", key="pa_n")
-            n_ok = mostrar_validacion(nombre_admin, validar_nombre, obligatorio=True)
-            todos_ok = u_ok and p_ok and n_ok
+            st.warning("No existe ningún administrador.")
+            ua = st.text_input("Usuario admin", key="pa_u")
+            u_ok = mostrar_validacion(ua, validar_usuario, obligatorio=True)
+            pas = st.text_input("Contraseña", type="password", key="pa_p")
+            p_ok = mostrar_validacion(pas, validar_password, obligatorio=True)
+            na = st.text_input("Nombre completo", key="pa_n")
+            n_ok = mostrar_validacion(na, validar_nombre, obligatorio=True)
+            tok = u_ok and p_ok and n_ok
             if st.button("Crear Administrador", use_container_width=True, type="primary",
-                         disabled=not todos_ok, key="pa_btn"):
-                if usuario_existe(usuario_admin.lower().strip()):
+                         disabled=not tok, key="pa_btn"):
+                if usuario_existe(ua.lower().strip()):
                     st.error("❌ Ese usuario ya existe")
                 else:
-                    crear_usuario(usuario=usuario_admin.lower().strip(), password=pass_admin,
+                    crear_usuario(usuario=ua.lower().strip(), password=pas,
                                   rol='admin', tipo_usuario='administrativo',
-                                  nombre_completo=nombre_admin.strip())
+                                  nombre_completo=na.strip())
                     limpiar_campos(['pa_u', 'pa_p', 'pa_n'])
-                    set_flash("success", "✅ Administrador creado. Ahora inicia sesión.")
+                    set_flash("success", "✅ Administrador creado.")
                     st.rerun()
 
     st.markdown("### 🔑 Iniciar Sesión")
@@ -1247,7 +1144,7 @@ def pantalla_login():
             else:
                 if "🔒" in error:
                     st.error(f"{error}")
-                    st.info("💡 **¿Olvidaste tu contraseña?** Contacta al administrador.")
+                    st.info("💡 Contacta al administrador.")
                 else:
                     st.warning(f"⚠️ {error}")
 
@@ -1256,53 +1153,53 @@ def pantalla_login():
 
 @st.fragment(run_every="15s")
 def _contadores_alumno():
-    espacios = obtener_espacios()
-    autos = next((e for e in espacios if e['tipo'] == 'Auto'), None)
-    motos = next((e for e in espacios if e['tipo'] == 'Moto'), None)
-    col1, col2 = st.columns(2)
-    with col1:
-        if autos:
-            d = autos['capacidad_total'] - autos['ocupados']
-            st.markdown(f'<div class="contador-card"><h4>🚗 Autos</h4><div class="numero">{d} de {autos["capacidad_total"]}</div></div>', unsafe_allow_html=True)
-    with col2:
-        if motos:
-            d = motos['capacidad_total'] - motos['ocupados']
-            st.markdown(f'<div class="contador-card"><h4>🏍️ Motos</h4><div class="numero">{d} de {motos["capacidad_total"]}</div></div>', unsafe_allow_html=True)
+    esp = obtener_espacios()
+    a = next((e for e in esp if e['tipo'] == 'Auto'), None)
+    m = next((e for e in esp if e['tipo'] == 'Moto'), None)
+    c1, c2 = st.columns(2)
+    with c1:
+        if a:
+            d = a['capacidad_total'] - a['ocupados']
+            st.markdown(f'<div class="contador-card"><h4>🚗 Autos</h4><div class="numero">{d} de {a["capacidad_total"]}</div></div>', unsafe_allow_html=True)
+    with c2:
+        if m:
+            d = m['capacidad_total'] - m['ocupados']
+            st.markdown(f'<div class="contador-card"><h4>🏍️ Motos</h4><div class="numero">{d} de {m["capacidad_total"]}</div></div>', unsafe_allow_html=True)
 
 
 @st.fragment(run_every="15s")
 def _contadores_caseta():
-    espacios = obtener_espacios()
-    autos = next((e for e in espacios if e['tipo'] == 'Auto'), None)
-    motos = next((e for e in espacios if e['tipo'] == 'Moto'), None)
-    col1, col2 = st.columns(2)
-    with col1:
-        if autos: st.metric("🚗 Autos dentro", f"{autos['ocupados']} / {autos['capacidad_total']}")
-    with col2:
-        if motos: st.metric("🏍️ Motos dentro", f"{motos['ocupados']} / {motos['capacidad_total']}")
+    esp = obtener_espacios()
+    a = next((e for e in esp if e['tipo'] == 'Auto'), None)
+    m = next((e for e in esp if e['tipo'] == 'Moto'), None)
+    c1, c2 = st.columns(2)
+    with c1:
+        if a: st.metric("🚗 Autos dentro", f"{a['ocupados']} / {a['capacidad_total']}")
+    with c2:
+        if m: st.metric("🏍️ Motos dentro", f"{m['ocupados']} / {m['capacidad_total']}")
 
 
 @st.fragment(run_every="5m")
 def _verificar_alertas_programadas(user):
     try:
-        alertas = obtener_vehiculos_alerta(12)
-        if alertas:
-            clave = f"alerta_programada_{date.today().isoformat()}_{len(alertas)}"
-            if not st.session_state.get(clave):
-                st.toast(f"🚨 {len(alertas)} vehículo(s) llevan +12h dentro.", icon="🚨")
-                st.session_state[clave] = True
+        al = obtener_vehiculos_alerta(12)
+        if al:
+            k = f"alerta_{date.today().isoformat()}_{len(al)}"
+            if not st.session_state.get(k):
+                st.toast(f"🚨 {len(al)} vehículo(s) llevan +12h dentro.", icon="🚨")
+                st.session_state[k] = True
     except Exception:
         pass
 
 
 @st.fragment(run_every="15s")
 def _dashboard_datos_vivo():
-    espacios = obtener_espacios()
-    autos = next((e for e in espacios if e['tipo'] == 'Auto'), None)
-    motos = next((e for e in espacios if e['tipo'] == 'Moto'), None)
+    esp = obtener_espacios()
+    autos = next((e for e in esp if e['tipo'] == 'Auto'), None)
+    motos = next((e for e in esp if e['tipo'] == 'Moto'), None)
 
-    col_logo, col_titulo = st.columns([1, 6])
-    with col_logo:
+    cl, ct = st.columns([1, 6])
+    with cl:
         st.markdown(f"""
             <div style="background: radial-gradient(circle, #FFFFFF 0%, #F5F0E8 100%); border-radius: 50%; padding: 4px;
                 border: 3px solid {COLOR_DORADO}; box-shadow: 0 0 12px rgba(201,169,97,.5);
@@ -1310,7 +1207,7 @@ def _dashboard_datos_vivo():
                 <img src="{LOGO_ESCUDO_URL}" style="width:60px; height:60px; border-radius:50%;" alt="CUY">
             </div>
         """, unsafe_allow_html=True)
-    with col_titulo:
+    with ct:
         st.markdown(f"""
             <div style="padding-top: 8px;">
                 <div style="color:{COLOR_DORADO}; font-size:1.6rem; font-weight:800; letter-spacing:1px;">📊 Panel de Control</div>
@@ -1319,12 +1216,12 @@ def _dashboard_datos_vivo():
         """, unsafe_allow_html=True)
 
     st.markdown("---")
-    col1, col2 = st.columns(2)
-    with col1:
+    c1, c2 = st.columns(2)
+    with c1:
         if autos:
             l = autos['capacidad_total'] - autos['ocupados']
             st.markdown(f'<div class="kpi-card"><div class="kpi-label">🚗 Autos dentro</div><div class="kpi-value">{autos["ocupados"]}</div><div class="kpi-delta delta-neutral">{l} lugares libres</div></div>', unsafe_allow_html=True)
-    with col2:
+    with c2:
         if motos:
             l = motos['capacidad_total'] - motos['ocupados']
             st.markdown(f'<div class="kpi-card"><div class="kpi-label">🏍️ Motos dentro</div><div class="kpi-value">{motos["ocupados"]}</div><div class="kpi-delta delta-neutral">{l} lugares libres</div></div>', unsafe_allow_html=True)
@@ -1405,13 +1302,13 @@ def _dashboard_datos_vivo():
     if not dentro_list:
         st.info("No hay vehículos dentro.")
     else:
-        criticos = [v for v in dentro_list if calcular_horas_dentro(v['hora_entrada']) >= 12]
-        advertencias = [v for v in dentro_list if 8 <= calcular_horas_dentro(v['hora_entrada']) < 12]
-        if criticos:
-            st.markdown(f'<div class="alert-card"><div style="color:#ff4444; font-weight:800; font-size:1rem;">🚨 {len(criticos)} vehículo(s) con +12h dentro</div></div>', unsafe_allow_html=True)
-        if advertencias:
-            with st.expander(f"⚠️ {len(advertencias)} vehículo(s) con 8-12h"):
-                for v in advertencias:
+        crit = [v for v in dentro_list if calcular_horas_dentro(v['hora_entrada']) >= 12]
+        adv = [v for v in dentro_list if 8 <= calcular_horas_dentro(v['hora_entrada']) < 12]
+        if crit:
+            st.markdown(f'<div class="alert-card"><div style="color:#ff4444; font-weight:800; font-size:1rem;">🚨 {len(crit)} vehículo(s) con +12h dentro</div></div>', unsafe_allow_html=True)
+        if adv:
+            with st.expander(f"⚠️ {len(adv)} vehículo(s) con 8-12h"):
+                for v in adv:
                     h = calcular_horas_dentro(v['hora_entrada'])
                     i = "🚗" if v['tipo'] == 'Auto' else "🏍️"
                     with st.container(border=True):
@@ -1444,22 +1341,22 @@ def _render_lista_vehiculos_dentro(user):
 
     if buscar and buscar.strip():
         t = buscar.strip().lower()
-        dentro_filtrado = [v for v in dentro if
-                           t in (v['placas'] or '').lower() or
-                           t in (v['nombre_completo'] or '').lower() or
-                           t in (v['matricula'] or '').lower()]
-        if len(dentro_filtrado) < len(dentro):
-            st.caption(f"🔎 **{len(dentro_filtrado)}** de **{len(dentro)}**")
-        dentro = dentro_filtrado
+        df_ = [v for v in dentro if
+               t in (v['placas'] or '').lower() or
+               t in (v['nombre_completo'] or '').lower() or
+               t in (v['matricula'] or '').lower()]
+        if len(df_) < len(dentro):
+            st.caption(f"🔎 **{len(df_)}** de **{len(dentro)}**")
+        dentro = df_
     else:
-        crit = sum(1 for v in dentro if calcular_horas_dentro(v['hora_entrada']) >= 12)
-        adv = sum(1 for v in dentro if 8 <= calcular_horas_dentro(v['hora_entrada']) < 12)
-        if crit or adv:
+        cr = sum(1 for v in dentro if calcular_horas_dentro(v['hora_entrada']) >= 12)
+        ad = sum(1 for v in dentro if 8 <= calcular_horas_dentro(v['hora_entrada']) < 12)
+        if cr or ad:
             c1, c2 = st.columns(2)
             with c1:
-                if crit: st.markdown(f'<div class="alert-badge critico">🚨 {crit} con +12h</div>', unsafe_allow_html=True)
+                if cr: st.markdown(f'<div class="alert-badge critico">🚨 {cr} con +12h</div>', unsafe_allow_html=True)
             with c2:
-                if adv: st.markdown(f'<div class="alert-badge advertencia">⚠️ {adv} con +8h</div>', unsafe_allow_html=True)
+                if ad: st.markdown(f'<div class="alert-badge advertencia">⚠️ {ad} con +8h</div>', unsafe_allow_html=True)
         st.write(f"**Total: {len(dentro)}**")
 
     if not dentro:
@@ -1476,10 +1373,8 @@ def _render_lista_vehiculos_dentro(user):
                 st.caption(f"Matrícula: {v['matricula'] or 'N/A'} | Entrada: {v['hora_entrada']}")
             with cb:
                 st.markdown(obtener_badge_alerta(h), unsafe_allow_html=True)
-
             if h >= 12:
                 st.warning(f"⚠️ Este vehículo lleva **{h:.1f} horas** estacionado.")
-
             if st.button("🚪 Registrar Salida", key=f"sal_{v['id_registro']}", use_container_width=True):
                 st.session_state[f"salida_rapida_{v['id_registro']}"] = True
                 st.rerun()
@@ -1527,9 +1422,9 @@ def panel_alumno():
     mostrar_flash()
     notificar_entrada_reciente(user)
 
-    no_leidos = contar_mensajes_no_leidos(user['id'])
-    if no_leidos > 0:
-        st.info(f"💬 Tienes **{no_leidos}** mensaje(s) sin leer.")
+    nl = contar_mensajes_no_leidos(user['id'])
+    if nl > 0:
+        st.info(f"💬 Tienes **{nl}** mensaje(s) sin leer.")
 
     with st.expander("👤 Ver mi perfil"):
         st.write(f"**Usuario:** {user['usuario']}")
@@ -1541,64 +1436,62 @@ def panel_alumno():
 
     mostrar_mi_cuenta(user)
 
-    t_msj = f"💬 Mensajes ({no_leidos} sin leer)" if no_leidos > 0 else "💬 Mensajes"
-    with st.expander(t_msj):
-        mensajes = obtener_mensajes_para_usuario(user['id'])
-        if not mensajes:
+    tm = f"💬 Mensajes ({nl} sin leer)" if nl > 0 else "💬 Mensajes"
+    with st.expander(tm):
+        msj = obtener_mensajes_para_usuario(user['id'])
+        if not msj:
             st.info("No tienes mensajes.")
         else:
-            for m in mensajes:
+            for m in msj:
                 il = "📬" if not m['leido'] else "📭"
                 ti = {"mensaje": "💬", "alerta": "🚨", "aviso": "📢"}.get(m['tipo'], "💬")
                 with st.container(border=True):
                     st.markdown(f"**{il} {ti} {m['asunto']}**")
                     st.caption(f"De: {m['remitente_nombre']} ({m['remitente_rol']}) · {m['fecha'].strftime('%d/%m/%Y %H:%M')}")
-                    if m.get('es_broadcast'):
-                        st.caption("📢 Mensaje general")
+                    if m.get('es_broadcast'): st.caption("📢 General")
                     with st.expander("Ver mensaje"):
                         st.write(m['cuerpo'])
                         if not m['leido']:
-                            if st.button("✅ Marcar como leído", key=f"al_leido_{m['id']}", use_container_width=True):
+                            if st.button("✅ Marcar leído", key=f"al_leido_{m['id']}", use_container_width=True):
                                 marcar_mensaje_leido(m['id'])
                                 st.rerun()
 
     st.markdown("### 🅿️ Lugares disponibles")
-    st.caption("🟢 Actualizándose en tiempo real (cada 15s)")
+    st.caption("🟢 Actualizándose cada 15s")
     _contadores_alumno()
     st.markdown("---")
 
-    registro_activo = obtener_registro_activo_de_usuario(user['id'])
-    if registro_activo:
+    ra = obtener_registro_activo_de_usuario(user['id'])
+    if ra:
         try:
-            delta = datetime.now() - registro_activo['hora_entrada']
-            minutos = int(delta.total_seconds() / 60)
+            dm = datetime.now() - ra['hora_entrada']
+            mins = int(dm.total_seconds() / 60)
         except Exception:
-            minutos = 999
-        if minutos <= 5:
+            mins = 999
+        if mins <= 5:
             st.markdown(f"""
                 <div class="bienvenida-card">
                     <h3>🎉 ¡Bienvenido al estacionamiento!</h3>
-                    <p>Tu <b>{registro_activo['tipo'].lower()}</b> acaba de entrar:</p>
-                    <p class="placas">{registro_activo['placas']}</p>
+                    <p>Tu <b>{ra['tipo'].lower()}</b> acaba de entrar:</p>
+                    <p class="placas">{ra['placas']}</p>
                 </div>
             """, unsafe_allow_html=True)
         else:
-            tt = formatear_tiempo_dentro(registro_activo['hora_entrada'])
-            st.success(f"✅ Vehículo **DENTRO**: {registro_activo['placas']} ({registro_activo['tipo']}) — {tt}")
-            st.caption(f"Entrada: {registro_activo['hora_entrada'].strftime('%d/%m/%Y %H:%M')}")
+            tt = formatear_tiempo_dentro(ra['hora_entrada'])
+            st.success(f"✅ Vehículo **DENTRO**: {ra['placas']} ({ra['tipo']}) — {tt}")
+            st.caption(f"Entrada: {ra['hora_entrada'].strftime('%d/%m/%Y %H:%M')}")
 
     st.markdown("### 🚘 Mis vehículos")
-    vehiculos = obtener_vehiculos_de_usuario(user['id'])
+    vhs = obtener_vehiculos_de_usuario(user['id'])
 
-    if not vehiculos:
+    if not vhs:
         st.info("Aún no tienes vehículos registrados.")
     else:
-        for v in vehiculos:
+        for v in vhs:
             with st.container(border=True):
                 i = "🚗" if v['tipo'] == 'Auto' else "🏍️"
                 st.markdown(f"**{i} {v['tipo']} — {v['placas']}**")
                 st.caption(f"Marca: {v['marca'] or 'N/A'} | Modelo: {v['modelo'] or 'N/A'} | Color: {v['color'] or 'N/A'}")
-
                 c1, c2 = st.columns(2)
                 with c1:
                     if st.button("🎫 QR", key=f"qr_{v['id']}", use_container_width=True):
@@ -1616,7 +1509,6 @@ def panel_alumno():
                 with c2:
                     st.button("🗑️ Borrar", key=f"del_{v['id']}", use_container_width=True,
                               on_click=cb_mostrar_confirm, args=(f"confirmar_elim_veh_{v['id']}",))
-
                 if st.session_state.get(f"confirmar_elim_veh_{v['id']}", False):
                     with st.container(border=True):
                         st.error(f"🚨 ¿Eliminar **{v['tipo']} {v['placas']}**?")
@@ -1632,46 +1524,39 @@ def panel_alumno():
 
     with st.expander("📜 Mi historial de visitas"):
         tv, vm = contar_visitas_usuario(user['id'])
-        historial = obtener_historial_usuario(user['id'], limite=100)
-        comp = [h for h in historial if h['hora_salida']]
+        hist = obtener_historial_usuario(user['id'], limite=100)
+        comp = [h for h in hist if h['hora_salida']]
         ps = "N/A"
         if comp:
-            tiempos = [(h['hora_salida'] - h['hora_entrada']).total_seconds() / 60 for h in comp]
-            p = sum(tiempos) / len(tiempos)
+            ts = [(h['hora_salida'] - h['hora_entrada']).total_seconds() / 60 for h in comp]
+            p = sum(ts) / len(ts)
             ps = f"{p:.0f} min" if p < 60 else f"{p/60:.1f} hrs"
-
         c1, c2, c3 = st.columns(3)
         with c1: st.metric("🚗 Visitas", tv)
         with c2: st.metric("📅 Mes", vm)
         with c3: st.metric("⏱️ Promedio", ps)
-
         st.markdown("---")
         filtro = st.radio("Filtrar:", ["Todas", "Dentro", "Fuera"], horizontal=True,
                           label_visibility="collapsed", key="filtro_historial")
-
         if filtro == "Dentro":
-            hf = [h for h in historial if h['estado'] == 'DENTRO']
+            hf = [h for h in hist if h['estado'] == 'DENTRO']
         elif filtro == "Fuera":
-            hf = [h for h in historial if h['estado'] == 'FUERA']
+            hf = [h for h in hist if h['estado'] == 'FUERA']
         else:
-            hf = historial
-
+            hf = hist
         if not hf:
             st.info("No hay visitas.")
         else:
             kl = "hist_lazy_count"
-            if kl not in st.session_state:
-                st.session_state[kl] = 10
+            if kl not in st.session_state: st.session_state[kl] = 10
             vis = hf[:st.session_state[kl]]
             st.caption(f"Mostrando **{len(vis)}** de **{len(hf)}**")
-
             for h in vis:
                 fe = h['hora_entrada'].strftime("%d/%m/%Y %H:%M") if h['hora_entrada'] else "N/A"
                 fs = h['hora_salida'].strftime("%d/%m/%Y %H:%M") if h['hora_salida'] else None
                 i = "🚗" if h['tipo'] == 'Auto' else "🏍️"
                 ec = "#00ff88" if h['estado'] == 'DENTRO' else "#A89968"
                 et = "🟢 DENTRO" if h['estado'] == 'DENTRO' else "🔴 COMPLETADA"
-
                 if fs:
                     du = h['hora_salida'] - h['hora_entrada']
                     m = int(du.total_seconds() / 60)
@@ -1680,7 +1565,6 @@ def panel_alumno():
                     d = datetime.now() - h['hora_entrada']
                     m = int(d.total_seconds() / 60)
                     dt = f"{m} min (en curso)" if m < 60 else f"{m // 60}h {m % 60}min (en curso)"
-
                 st.markdown(f"""
                     <div class="hist-item" style="border-left-color: {ec};">
                         <div style="display:flex; justify-content:space-between; flex-wrap:wrap;">
@@ -1692,7 +1576,6 @@ def panel_alumno():
                         {f'<div style="color:#aaa; font-size:.8rem;">⬆️ {fs}</div>' if fs else ''}
                     </div>
                 """, unsafe_allow_html=True)
-
             if st.session_state[kl] < len(hf):
                 if st.button("⬇️ Ver más", use_container_width=True, key="hist_ver_mas"):
                     st.session_state[kl] += 10
@@ -1706,14 +1589,12 @@ def panel_alumno():
         marca = st.text_input("Marca (opcional)", key="vh_marca")
         modelo = st.text_input("Modelo (opcional)", key="vh_modelo")
         color = st.text_input("Color (opcional)", key="vh_color")
-
         pu = True
         if placas and pk:
             plt = placas.replace("-", "").replace(" ", "").upper()
             if placas_existen(plt):
                 st.markdown('<div class="val-error">❌ Ya existe un vehículo con esas placas</div>', unsafe_allow_html=True)
                 pu = False
-
         tok = pk and pu
         if st.button("Registrar vehículo", use_container_width=True, type="primary",
                      disabled=not tok, key="vh_btn"):
@@ -1740,21 +1621,14 @@ def panel_alumno():
         _, cq, _ = st.columns([1, 2, 1])
         with cq:
             st.image(qi['imagen'], caption=f"QR — {qi['vehiculo']['tipo']} {qi['vehiculo']['placas']}")
-
-        c1, c2 = st.columns(2)
-        with c1:
-            st.download_button("📥 Descargar PNG", data=qi['imagen'],
-                file_name=f"QR_{qi['vehiculo']['placas']}.png", mime="image/png", use_container_width=True)
-        with c2:
-            try:
-                with st.spinner("📄 Generando PDF..."):
-                    pdf_bytes = generar_pdf_qr(user, qi['vehiculo'], qi['imagen'])
-                st.download_button("📄 Descargar PDF", data=pdf_bytes,
-                    file_name=f"CUYPARK_{qi['vehiculo']['placas']}_{user['matricula'] or 'alumno'}.pdf",
-                    mime="application/pdf", use_container_width=True, type="primary")
-            except Exception as e:
-                st.error(f"Error al generar el PDF: {e}")
-
+        try:
+            with st.spinner("📄 Generando PDF..."):
+                pdf_bytes = generar_pdf_qr(user, qi['vehiculo'], qi['imagen'])
+            st.download_button("📄 Descargar PDF", data=pdf_bytes,
+                file_name=f"CUYPARK_{qi['vehiculo']['placas']}_{user['matricula'] or 'alumno'}.pdf",
+                mime="application/pdf", use_container_width=True, type="primary")
+        except Exception as e:
+            st.error(f"Error al generar PDF: {e}")
         if st.button("❌ Cerrar QR", use_container_width=True):
             st.session_state.qr_generado = None
             st.rerun()
@@ -1768,9 +1642,8 @@ def panel_trabajador():
     st.markdown(f'<div class="panel-header">👷 Caseta — {user["nombre_completo"]}</div>', unsafe_allow_html=True)
     mostrar_flash()
     mostrar_mi_cuenta(user)
-
     _contadores_caseta()
-    st.caption("🟢 Contadores actualizándose cada 15s")
+    st.caption("🟢 Contadores cada 15s")
     st.markdown("---")
 
     seccion = st.radio("Sección:", ["📷 Escanear QR", "📋 Vehículos Dentro"],
@@ -1780,14 +1653,13 @@ def panel_trabajador():
         _seccion_escaner_qr(user)
     else:
         st.markdown("### 🚘 Vehículos dentro")
-        auto_refresh = st.toggle("🔄 Auto-actualizar cada 10 segundos", value=False,
-            key="auto_refresh_caseta")
-        salida_en_curso = any(k.startswith("salida_rapida_") and v for k, v in st.session_state.items())
-
-        if auto_refresh and not salida_en_curso:
+        ar = st.toggle("🔄 Auto-actualizar cada 10 segundos", value=False,
+                       key="auto_refresh_caseta")
+        sec = any(k.startswith("salida_rapida_") and v for k, v in st.session_state.items())
+        if ar and not sec:
             st.caption("🟢 Actualizando cada 10 segundos")
             _render_dentro_auto(user)
-        elif auto_refresh and salida_en_curso:
+        elif ar and sec:
             st.caption("⏸️ Auto-actualización pausada")
             _render_dentro_manual(user)
         else:
@@ -1822,7 +1694,7 @@ def panel_admin():
 
         if sub == "🎓 Crear Alumno":
             ids = generar_siguiente_id("ALU")
-            st.info(f"💡 El ID sugerido es **{ids}**.")
+            st.info(f"💡 ID sugerido: **{ids}**")
             u = st.text_input("Usuario", key="ca_u", placeholder="mín. 3 caracteres, sin espacios")
             u_ok = mostrar_validacion(u, validar_usuario)
             p = st.text_input("Contraseña", type="password", key="ca_p")
@@ -1840,9 +1712,8 @@ def panel_admin():
             with cb:
                 gru = st.text_input("Grupo (opcional)", key="ca_gru")
                 g_ok = mostrar_validacion(gru, validar_grupo, obligatorio=False)
-                tel = st.text_input("Teléfono (opcional)", key="ca_tel", placeholder="10 dígitos")
+                tel = st.text_input("Teléfono (opcional)", key="ca_tel")
                 t_ok = mostrar_validacion(tel, validar_telefono, obligatorio=False)
-
             uu = True
             if u and u_ok and usuario_existe(u.lower().strip()):
                 st.markdown('<div class="val-error">❌ Ese usuario ya existe</div>', unsafe_allow_html=True)
@@ -1851,7 +1722,6 @@ def panel_admin():
             if id_est and i_ok and id_estudiante_existe(id_est.strip()):
                 st.markdown('<div class="val-error">❌ Ese ID ya está en uso</div>', unsafe_allow_html=True)
                 iu = False
-
             tok = u_ok and p_ok and n_ok and i_ok and m_ok and c_ok and g_ok and t_ok and uu and iu
             if st.button("✅ Crear Alumno", use_container_width=True, type="primary",
                          disabled=not tok, key="ca_btn"):
@@ -1865,8 +1735,7 @@ def panel_admin():
                             telefono=tel.strip() if tel else None,
                             id_estudiante=id_est.strip() if id_est else None)
                         registrar_log(user['id'], "CREAR_ALUMNO",
-                                      f"Alumno @{u.lower().strip()} ({nombre}) creado",
-                                      "Super_Usuarios")
+                                      f"Alumno @{u.lower().strip()} ({nombre}) creado", "Super_Usuarios")
                     limpiar_campos(['ca_u', 'ca_p', 'ca_n', 'ca_id', 'ca_mat', 'ca_car', 'ca_gru', 'ca_tel'])
                     set_flash("success", f"✅ Alumno **{nombre}** creado.")
                     st.rerun()
@@ -1882,13 +1751,11 @@ def panel_admin():
             n_ok = mostrar_validacion(nombre, validar_nombre)
             tel = st.text_input("Teléfono (opcional)", key="ct_tel")
             t_ok = mostrar_validacion(tel, validar_telefono, obligatorio=False)
-
             uu = True
             if u and u_ok and usuario_existe(u.lower().strip()):
                 st.markdown('<div class="val-error">❌ Ese usuario ya existe</div>', unsafe_allow_html=True)
                 uu = False
             tok = u_ok and p_ok and n_ok and t_ok and uu
-
             if st.button("✅ Crear Trabajador", use_container_width=True, type="primary",
                          disabled=not tok, key="ct_btn"):
                 try:
@@ -1914,13 +1781,11 @@ def panel_admin():
             n_ok = mostrar_validacion(nombre, validar_nombre)
             tel = st.text_input("Teléfono (opcional)", key="cA_tel")
             t_ok = mostrar_validacion(tel, validar_telefono, obligatorio=False)
-
             uu = True
             if u and u_ok and usuario_existe(u.lower().strip()):
                 st.markdown('<div class="val-error">❌ Ese usuario ya existe</div>', unsafe_allow_html=True)
                 uu = False
             tok = u_ok and p_ok and n_ok and t_ok and uu
-
             if st.button("✅ Crear Administrador", use_container_width=True, type="primary",
                          disabled=not tok, key="cA_btn"):
                 try:
@@ -1941,17 +1806,15 @@ def panel_admin():
             with cf1:
                 filtro = st.selectbox("Filtrar por rol", ["Todos", "alumno", "trabajador", "admin"])
             with cf2:
-                solo_activos = st.checkbox("Solo activos", value=False)
-
-            with st.spinner("📋 Cargando usuarios..."):
-                usuarios = obtener_todos_usuarios(None if filtro == "Todos" else filtro, solo_activos=solo_activos)
-
-            if not usuarios:
+                sa = st.checkbox("Solo activos", value=False)
+            with st.spinner("📋 Cargando..."):
+                us = obtener_todos_usuarios(None if filtro == "Todos" else filtro, solo_activos=sa)
+            if not us:
                 st.info("No hay usuarios.")
             else:
-                ac = sum(1 for u in usuarios if u['activo'])
-                ic = len(usuarios) - ac
-                st.write(f"**Total: {len(usuarios)}** ({ac} activos, {ic} inactivos)")
+                ac = sum(1 for u in us if u['activo'])
+                ic = len(us) - ac
+                st.write(f"**Total: {len(us)}** ({ac} activos, {ic} inactivos)")
 
                 with st.expander("📊 Comparativa activos vs inactivos"):
                     datos = contar_usuarios_por_estado()
@@ -1960,13 +1823,13 @@ def panel_admin():
                         for r, d in datos.items()
                     ])
                     st.dataframe(dfc, use_container_width=True, hide_index=True)
-                    fig_comp = go.Figure(data=[
+                    fc = go.Figure(data=[
                         go.Bar(name='Activos', x=dfc['Rol'], y=dfc['Activos'],
                                marker_color='#00ff88', text=dfc['Activos'], textposition='outside'),
                         go.Bar(name='Inactivos', x=dfc['Rol'], y=dfc['Inactivos'],
                                marker_color='#D7192D', text=dfc['Inactivos'], textposition='outside'),
                     ])
-                    fig_comp.update_layout(
+                    fc.update_layout(
                         barmode='group', paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
                         font=dict(color=COLOR_CREMA, size=11),
                         xaxis=dict(gridcolor="rgba(201,169,97,0.1)"),
@@ -1974,22 +1837,18 @@ def panel_admin():
                         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                         margin=dict(l=10, r=10, t=40, b=10), height=300,
                     )
-                    st.plotly_chart(fig_comp, use_container_width=True, config={"displayModeBar": False})
-
+                    st.plotly_chart(fc, use_container_width=True, config={"displayModeBar": False})
                     if st.button("⚡ Crear índices recomendados", use_container_width=True, key="btn_indices"):
-                        with st.spinner("Creando índices..."):
-                            creados, errores = crear_indices()
-                        st.success(f"✅ {len(creados)} índice(s) creado(s).")
-                        if errores:
-                            st.caption(f"ℹ️ {len(errores)} ya existían.")
+                        with st.spinner("Creando..."):
+                            cr, er = crear_indices()
+                        st.success(f"✅ {len(cr)} índice(s) creado(s).")
+                        if er: st.caption(f"ℹ️ {len(er)} ya existían.")
 
                 st.markdown("---")
-
-                for u in usuarios:
+                for u in us:
                     with st.container(border=True):
                         icono = {'alumno': '🎓', 'trabajador': '👷', 'admin': '👑'}.get(u['rol'], '👤')
                         eb = "🟢" if u['activo'] else "🔒"
-
                         c1, c2, c3, c4, c5 = st.columns([4, 1, 1, 1, 1])
                         with c1:
                             ba = False; mb = 0
@@ -1999,20 +1858,19 @@ def panel_admin():
                                     mb = int((u['bloqueado_hasta'] - datetime.now()).total_seconds() / 60) + 1
                             if ba: eb = "🔐"
                             st.markdown(f"**{eb} {icono} {u['nombre_completo']}** — @{u['usuario']}")
-                            if not u['activo']: st.caption("🔒 Cuenta desactivada")
+                            if not u['activo']: st.caption("🔒 Desactivada")
                             if ba: st.caption(f"🔐 Bloqueada — {mb} min")
-                            int_fall = u.get('intentos_fallidos') or 0
-                            if int_fall > 0 and not ba:
-                                st.caption(f"⚠️ Intentos fallidos: {int_fall}/5")
+                            i_f = u.get('intentos_fallidos') or 0
+                            if i_f > 0 and not ba: st.caption(f"⚠️ Intentos fallidos: {i_f}/5")
                             if u['id_estudiante']: st.caption(f"ID: {u['id_estudiante']}")
                             st.caption(f"Rol: {u['rol']} | Tel: {u['telefono'] or 'N/A'}")
                             if u['rol'] == 'alumno':
                                 st.caption(f"Matrícula: {u['matricula'] or 'N/A'}")
                         with c2:
                             if st.button("✏️", key=f"edit_{u['id']}", use_container_width=True):
-                                for other in usuarios:
-                                    if other['id'] != u['id']:
-                                        st.session_state[f"editando_{other['id']}"] = False
+                                for o in us:
+                                    if o['id'] != u['id']:
+                                        st.session_state[f"editando_{o['id']}"] = False
                                 st.session_state[f"editando_{u['id']}"] = not st.session_state.get(f"editando_{u['id']}", False)
                                 st.rerun()
                         with c3:
@@ -2052,9 +1910,9 @@ def panel_admin():
                             with st.container(border=True):
                                 st.error(f"🚨 ¿Eliminar **{u['nombre_completo']}**?")
                                 if u['rol'] == 'admin':
-                                    st.warning("⚠️ Es un ADMINISTRADOR.")
-                                    texto = st.text_input("Escribe ELIMINAR:", key=f"confirma_texto_{u['id']}")
-                                    cok = (texto.strip() == "ELIMINAR")
+                                    st.warning("⚠️ Es ADMINISTRADOR.")
+                                    tx = st.text_input("Escribe ELIMINAR:", key=f"confirma_texto_{u['id']}")
+                                    cok = (tx.strip() == "ELIMINAR")
                                 else:
                                     cok = True
                                 cs, cn = st.columns(2)
@@ -2087,7 +1945,6 @@ def panel_admin():
                         en_ok = mostrar_validacion(en, validar_nombre)
                         et = st.text_input("Teléfono", value=u['telefono'] or "", key=f"ed_tel_{u['id']}")
                         et_ok = mostrar_validacion(et, validar_telefono, obligatorio=False)
-
                         if u['rol'] == 'alumno':
                             ea, eb = st.columns(2)
                             with ea:
@@ -2102,14 +1959,13 @@ def panel_admin():
                                 eg_ok = mostrar_validacion(eg, validar_grupo, obligatorio=False)
                             eiu = True
                             if eid and eid_ok and id_estudiante_existe_otro(eid.strip(), u['id']):
-                                st.markdown('<div class="val-error">❌ Ese ID ya lo usa otro</div>', unsafe_allow_html=True)
+                                st.markdown('<div class="val-error">❌ ID ya lo usa otro</div>', unsafe_allow_html=True)
                                 eiu = False
                         else:
                             eid = u['id_estudiante']; eid_ok = True; eiu = True
                             em = u['matricula']; em_ok = True
                             ec = u['carrera']; ec_ok = True
                             eg = u['grupo']; eg_ok = True
-
                         st.markdown("##### 🔐 Cambiar contraseña (opcional)")
                         ep = st.text_input("Nueva contraseña", type="password", key=f"ed_p_{u['id']}")
                         ep2 = st.text_input("Confirmar", type="password", key=f"ed_p2_{u['id']}")
@@ -2120,9 +1976,7 @@ def panel_admin():
                         if ep:
                             if pok: st.markdown('<div class="val-ok">✅ Válida</div>', unsafe_allow_html=True)
                             else: st.markdown(f'<div class="val-error">❌ {pm}</div>', unsafe_allow_html=True)
-
                         tok = en_ok and et_ok and eid_ok and em_ok and ec_ok and eg_ok and eiu and pok
-
                         cx, cy = st.columns(2)
                         with cx:
                             if st.button("💾 Guardar", use_container_width=True, type="primary",
@@ -2144,7 +1998,7 @@ def panel_admin():
                                     limpiar_campos([f"ed_n_{u['id']}", f"ed_tel_{u['id']}", f"ed_id_{u['id']}",
                                                     f"ed_mat_{u['id']}", f"ed_car_{u['id']}", f"ed_gru_{u['id']}",
                                                     f"ed_p_{u['id']}", f"ed_p2_{u['id']}"])
-                                    set_flash("success", f"✅ Usuario actualizado.")
+                                    set_flash("success", "✅ Usuario actualizado.")
                                     st.rerun()
                                 except Exception as e:
                                     st.error(f"Error: {e}")
@@ -2159,34 +2013,31 @@ def panel_admin():
 
     elif seccion == "📋 Registros":
         st.markdown("### 📋 Registros de entradas/salidas")
-        fecha_desde, fecha_hasta = selector_rango_fechas("registros")
-
+        fd, fh = selector_rango_fechas("registros")
         c1, c2 = st.columns(2)
-        with c1: filtro_estado = st.selectbox("Estado", ["Todos", "DENTRO", "FUERA"], key="reg_estado")
-        with c2: filtro_tipo = st.selectbox("Tipo", ["Todos", "Auto", "Moto"], key="reg_tipo")
-
+        with c1: fe = st.selectbox("Estado", ["Todos", "DENTRO", "FUERA"], key="reg_estado")
+        with c2: ft = st.selectbox("Tipo", ["Todos", "Auto", "Moto"], key="reg_tipo")
         buscar = st.text_input("🔍 Buscar (nombre, placas, matrícula)", key="reg_buscar").lower().strip()
-        por_pagina = mostrar_paginacion_superior("reg")
+        pp = mostrar_paginacion_superior("reg")
 
-        fa = f"{fecha_desde}|{fecha_hasta}|{filtro_estado}|{filtro_tipo}|{buscar}|{por_pagina}"
+        fa = f"{fd}|{fh}|{fe}|{ft}|{buscar}|{pp}"
         if st.session_state.get("reg_filtros_prev") != fa:
             st.session_state["reg_pagina"] = 1
             st.session_state["reg_filtros_prev"] = fa
 
-        pagina = st.session_state.get("reg_pagina", 1)
-        offset = (pagina - 1) * por_pagina
+        pag = st.session_state.get("reg_pagina", 1)
+        off = (pag - 1) * pp
 
         with st.spinner("📋 Cargando registros..."):
-            total = contar_registros_filtrados(fecha_desde, fecha_hasta, filtro_estado, filtro_tipo, buscar or None)
-            registros = obtener_registros_paginado(fecha_desde, fecha_hasta, filtro_estado, filtro_tipo,
-                                                   buscar or None, offset, por_pagina)
+            total = contar_registros_filtrados(fd, fh, fe, ft, buscar or None)
+            regs = obtener_registros_paginado(fd, fh, fe, ft, buscar or None, off, pp)
 
-        if not registros:
-            st.info("No hay registros en el rango seleccionado.")
+        if not regs:
+            st.info("No hay registros.")
         else:
-            st.caption(f"**Mostrando {len(registros)} de {total} registro(s)**")
+            st.caption(f"**Mostrando {len(regs)} de {total} registro(s)**")
 
-            df_export = pd.DataFrame([{
+            df_exp = pd.DataFrame([{
                 'ID': r['id'], 'Estado': r['estado'], 'Alumno': r['nombre_completo'],
                 'Matrícula': r['matricula'], 'Carrera': r['carrera'],
                 'Tipo': r['tipo'], 'Placas': r['placas'],
@@ -2194,42 +2045,42 @@ def panel_admin():
                 'Hora Entrada': r['hora_entrada'].strftime("%H:%M:%S") if r['hora_entrada'] else "",
                 'Fecha Salida': r['hora_salida'].strftime("%d/%m/%Y") if r['hora_salida'] else "En curso",
                 'Hora Salida': r['hora_salida'].strftime("%H:%M:%S") if r['hora_salida'] else ""
-            } for r in registros])
+            } for r in regs])
 
-            rango_txt = (f"Período: {fecha_desde.strftime('%d/%m/%Y')} - {fecha_hasta.strftime('%d/%m/%Y')}"
-                         if fecha_desde and fecha_hasta else "Período: Todo el historial")
+            rango_txt = (f"Período: {fd.strftime('%d/%m/%Y')} - {fh.strftime('%d/%m/%Y')}"
+                         if fd and fh else "Período: Todo el historial")
 
-            # Generar SOLO PDF
-            with st.spinner("📄 Generando PDF..."):
-                try:
-                    pdf_bytes = generar_pdf_reporte(
-                        df_export, "Reporte de Registros de Estacionamiento",
-                        f"{rango_txt} | Total: {total} registro(s)"
-                    )
-                    st.download_button(
-                        "📄 Descargar Reporte PDF",
-                        data=pdf_bytes,
-                        file_name=f"registros_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-                        mime="application/pdf",
-                        use_container_width=True,
-                        type="primary",
-                        key="dl_reg_pdf"
-                    )
-                except Exception as e:
-                    st.error(f"Error al generar PDF: {e}")
+            # Generar PDF sin spinner anidado
+            pdf_bytes = None
+            try:
+                pdf_bytes = generar_pdf_reporte(
+                    df_exp, "Reporte de Registros de Estacionamiento",
+                    f"{rango_txt} | Total: {total} registro(s)"
+                )
+            except Exception as e:
+                st.error(f"Error generando PDF: {e}")
+
+            if pdf_bytes:
+                st.download_button(
+                    "📄 Descargar Reporte PDF",
+                    data=pdf_bytes,
+                    file_name=f"registros_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                    type="primary",
+                    key="dl_reg_pdf"
+                )
 
             st.markdown("---")
-            for r in registros:
-                with st.container(border=True):
-                    icono = "🚗" if r['tipo'] == 'Auto' else "🏍️"
-                    ei = "🟢" if r['estado'] == 'DENTRO' else "🔴"
-                    st.markdown(f"**{ei} {icono} {r['placas']}** — {r['nombre_completo']}")
-                    st.caption(f"Matrícula: {r['matricula'] or 'N/A'} | Carrera: {r['carrera'] or 'N/A'}")
-                    st.caption(f"⬇️ Entrada: {r['hora_entrada']}")
-                    st.caption(f"⬆️ Salida: {r['hora_salida'] or '—'}")
-                    if r['evidencia_entrada'] or r['evidencia_salida']:
-                        if st.button("📸 Ver evidencias", key=f"ver_ev_{r['id']}", use_container_width=True):
-                            st.session_state[f"mostrar_ev_{r['id']}"] = not st.session_state.get(f"mostrar_ev_{r['id']}", False)
+            for r in regs:
+                ic = "🚗" if r['tipo'] == 'Auto' else "🏍️"
+                ei = "🟢" if r['estado'] == 'DENTRO' else "🔴"
+                st.markdown(f"**{ei} {ic} {r['placas']}** — {r['nombre_completo']}")
+                st.caption(f"Matrícula: {r['matricula'] or 'N/A'} · Carrera: {r['carrera'] or 'N/A'}")
+                st.caption(f"⬇️ Entrada: {r['hora_entrada']} · ⬆️ Salida: {r['hora_salida'] or '—'}")
+                if r['evidencia_entrada'] or r['evidencia_salida']:
+                    if st.button("📸 Ver evidencias", key=f"ver_ev_{r['id']}", use_container_width=True):
+                        st.session_state[f"mostrar_ev_{r['id']}"] = not st.session_state.get(f"mostrar_ev_{r['id']}", False)
                     if st.session_state.get(f"mostrar_ev_{r['id']}", False):
                         if r['evidencia_entrada']:
                             st.markdown("**📷 Entrada:**")
@@ -2239,43 +2090,39 @@ def panel_admin():
                             st.markdown("**📷 Salida:**")
                             img = base64_a_bytes(r['evidencia_salida'])
                             if img: st.image(img, use_container_width=True)
+                st.markdown("---")
 
-            st.markdown("---")
-            render_paginacion_inferior("reg", pagina, total, por_pagina, "reg_pagina")
+            render_paginacion_inferior("reg", pag, total, pp, "reg_pagina")
 
     elif seccion == "📈 Métricas":
         st.markdown("### 📈 Métricas y patrones")
         with st.spinner("📈 Calculando..."):
-            registros = obtener_todos_los_registros()
-        if not registros:
+            regs = obtener_todos_los_registros()
+        if not regs:
             st.info("Sin datos suficientes.")
         else:
-            df = pd.DataFrame(registros)
+            df = pd.DataFrame(regs)
             df['hora_entrada'] = pd.to_datetime(df['hora_entrada'], errors='coerce')
             df['hora_salida'] = pd.to_datetime(df['hora_salida'], errors='coerce')
-
             st.markdown("#### ⏰ Horas de mayor demanda")
             df['hora_del_dia'] = df['hora_entrada'].dt.hour
             hp = df.groupby('hora_del_dia').size().reset_index(name='entradas').sort_values('hora_del_dia')
             st.bar_chart(hp.set_index('hora_del_dia')['entradas'])
-
             st.markdown("#### ⏱️ Permanencia promedio")
             comp = df.dropna(subset=['hora_salida']).copy()
             if not comp.empty:
-                comp['duracion_min'] = (comp['hora_salida'] - comp['hora_entrada']).dt.total_seconds() / 60
-                st.metric("Promedio general", f"{comp['duracion_min'].mean():.1f} min")
+                comp['dur'] = (comp['hora_salida'] - comp['hora_entrada']).dt.total_seconds() / 60
+                st.metric("Promedio general", f"{comp['dur'].mean():.1f} min")
                 c1, c2 = st.columns(2)
                 with c1:
-                    ap = comp[comp['tipo'] == 'Auto']['duracion_min'].mean()
+                    ap = comp[comp['tipo'] == 'Auto']['dur'].mean()
                     if pd.notna(ap): st.metric("🚗 Autos", f"{ap:.1f} min")
                 with c2:
-                    mp = comp[comp['tipo'] == 'Moto']['duracion_min'].mean()
+                    mp = comp[comp['tipo'] == 'Moto']['dur'].mean()
                     if pd.notna(mp): st.metric("🏍️ Motos", f"{mp:.1f} min")
-
             st.markdown("#### 🎓 Uso por carrera")
             pc = df[df['carrera'].notna()].groupby('carrera').size().reset_index(name='usos')
             if not pc.empty: st.bar_chart(pc.set_index('carrera')['usos'])
-
             st.markdown("#### 🚗 Uso por tipo")
             pt = df.groupby('tipo').size().reset_index(name='cantidad')
             st.dataframe(pt, use_container_width=True, hide_index=True)
@@ -2284,31 +2131,28 @@ def panel_admin():
         st.markdown("### 🔍 Registro de Auditoría")
         st.caption("Historial de acciones importantes.")
         st.metric("Total de registros", contar_logs())
-
-        fecha_desde, fecha_hasta = selector_rango_fechas("auditoria")
-
+        fd, fh = selector_rango_fechas("auditoria")
         c1, c2 = st.columns(2)
         with c1:
             acciones = ["Todas"] + obtener_acciones_unicas()
-            filtro_accion = st.selectbox("Filtrar por acción", acciones, key="aud_accion")
+            fac = st.selectbox("Filtrar por acción", acciones, key="aud_accion")
         with c2:
             buscar = st.text_input("🔍 Buscar (usuario o detalle)", key="aud_buscar").lower().strip()
+        pp = mostrar_paginacion_superior("aud")
 
-        por_pagina = mostrar_paginacion_superior("aud")
-
-        fa = f"{fecha_desde}|{fecha_hasta}|{filtro_accion}|{buscar}|{por_pagina}"
+        fa = f"{fd}|{fh}|{fac}|{buscar}|{pp}"
         if st.session_state.get("aud_filtros_prev") != fa:
             st.session_state["aud_pagina"] = 1
             st.session_state["aud_filtros_prev"] = fa
 
-        pagina = st.session_state.get("aud_pagina", 1)
-        offset = (pagina - 1) * por_pagina
+        pag = st.session_state.get("aud_pagina", 1)
+        off = (pag - 1) * pp
 
         with st.spinner("🔍 Cargando logs..."):
-            total = contar_logs_filtrados(filtro_accion, buscar or None, fecha_desde, fecha_hasta)
-            logs = obtener_logs(limite=por_pagina, filtro_accion=filtro_accion,
+            total = contar_logs_filtrados(fac, buscar or None, fd, fh)
+            logs = obtener_logs(limite=pp, filtro_accion=fac,
                                 buscar=buscar if buscar else None,
-                                fecha_desde=fecha_desde, fecha_hasta=fecha_hasta, offset=offset)
+                                fecha_desde=fd, fecha_hasta=fh, offset=off)
 
         if not logs:
             st.info("No hay logs.")
@@ -2326,31 +2170,31 @@ def panel_admin():
                 'Tabla afectada': l['tabla_afectada'] or "",
                 'ID afectado': l['id_afectado'] if l['id_afectado'] else ""
             } for l in logs])
+            rango_txt = (f"Período: {fd.strftime('%d/%m/%Y')} - {fh.strftime('%d/%m/%Y')}"
+                         if fd and fh else "Período: Todo el historial")
 
-            rango_txt = (f"Período: {fecha_desde.strftime('%d/%m/%Y')} - {fecha_hasta.strftime('%d/%m/%Y')}"
-                         if fecha_desde and fecha_hasta else "Período: Todo el historial")
+            pdf_bytes = None
+            try:
+                pdf_bytes = generar_pdf_reporte(
+                    df_logs, "Reporte de Auditoría del Sistema",
+                    f"{rango_txt} | Total: {total} evento(s)"
+                )
+            except Exception as e:
+                st.error(f"Error generando PDF: {e}")
 
-            with st.spinner("📄 Generando PDF..."):
-                try:
-                    pdf_bytes = generar_pdf_reporte(
-                        df_logs, "Reporte de Auditoría del Sistema",
-                        f"{rango_txt} | Total: {total} evento(s)"
-                    )
-                    st.download_button(
-                        "📄 Descargar Reporte PDF",
-                        data=pdf_bytes,
-                        file_name=f"auditoria_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-                        mime="application/pdf",
-                        use_container_width=True,
-                        type="primary",
-                        key="dl_aud_pdf"
-                    )
-                except Exception as e:
-                    st.error(f"Error al generar PDF: {e}")
+            if pdf_bytes:
+                st.download_button(
+                    "📄 Descargar Reporte PDF",
+                    data=pdf_bytes,
+                    file_name=f"auditoria_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                    type="primary",
+                    key="dl_aud_pdf"
+                )
 
             st.markdown("---")
-
-            colores_accion = {
+            colores = {
                 "INICIO_SESION": "#00ff88",
                 "CREAR_ALUMNO": "#C9A961", "CREAR_TRABAJADOR": "#C9A961", "CREAR_ADMIN": "#D7192D",
                 "EDITAR_USUARIO": "#C9A961",
@@ -2364,13 +2208,13 @@ def panel_admin():
                 "ENVIAR_MENSAJE": "#0066B3",
             }
             for l in logs:
-                color = colores_accion.get(l['accion'], "#C9A961")
+                col = colores.get(l['accion'], "#C9A961")
                 ir = {'alumno': '🎓', 'trabajador': '👷', 'admin': '👑'}.get(l['rol_accion'], '👤')
                 fs = l['fecha'].strftime("%d/%m/%Y %H:%M:%S") if l['fecha'] else "N/A"
                 st.markdown(f"""
-                    <div class="log-row" style="border-left-color: {color};">
+                    <div class="log-row" style="border-left-color: {col};">
                         <div style="display:flex; justify-content:space-between; flex-wrap:wrap;">
-                            <span class="log-accion" style="color: {color};">{l['accion']}</span>
+                            <span class="log-accion" style="color: {col};">{l['accion']}</span>
                             <span class="log-fecha">{fs}</span>
                         </div>
                         <div class="log-detalle">{ir} <b>@{l['usuario_accion'] or 'sistema'}</b>
@@ -2380,13 +2224,12 @@ def panel_admin():
                 """, unsafe_allow_html=True)
 
             st.markdown("---")
-            render_paginacion_inferior("aud", pagina, total, por_pagina, "aud_pagina")
+            render_paginacion_inferior("aud", pag, total, pp, "aud_pagina")
 
     elif seccion == "💬 Mensajes":
         st.markdown("### 💬 Mensajes")
-        tab1, tab2, tab3 = st.tabs(["📥 Recibidos", "📤 Enviados", "✉️ Nuevo"])
-
-        with tab1:
+        t1, t2, t3 = st.tabs(["📥 Recibidos", "📤 Enviados", "✉️ Nuevo"])
+        with t1:
             ms = obtener_mensajes_para_usuario(user['id'])
             if not ms:
                 st.info("No tienes mensajes.")
@@ -2401,8 +2244,8 @@ def panel_admin():
                         c1, c2 = st.columns([5, 1])
                         with c1:
                             st.markdown(f"**{pr}{ti} {m['asunto']}**")
-                            st.caption(f"De: @{m['remitente_usuario']} ({m['remitente_nombre']}) · {m['fecha'].strftime('%d/%m/%Y %H:%M')}")
-                            if m.get('es_broadcast'): st.caption("📢 Mensaje general")
+                            st.caption(f"De: @{m['remitente_usuario']} · {m['fecha'].strftime('%d/%m/%Y %H:%M')}")
+                            if m.get('es_broadcast'): st.caption("📢 General")
                         with c2:
                             if not m['leido']:
                                 if st.button("✅", key=f"leido_{m['id']}", use_container_width=True):
@@ -2411,8 +2254,7 @@ def panel_admin():
                             st.write(m['cuerpo'])
                             if st.button("🗑️ Eliminar", key=f"del_msg_{m['id']}", use_container_width=True):
                                 eliminar_mensaje(m['id']); st.rerun()
-
-        with tab2:
+        with t2:
             env = obtener_mensajes_enviados(user['id'])
             if not env:
                 st.info("No has enviado mensajes.")
@@ -2420,20 +2262,19 @@ def panel_admin():
                 for m in env:
                     with st.container(border=True):
                         st.markdown(f"**{m['asunto']}**")
-                        d = "📢 Todos los alumnos" if m.get('es_broadcast') else f"@{m['destinatario_usuario']} ({m['destinatario_nombre']})"
+                        d = "📢 Todos los alumnos" if m.get('es_broadcast') else f"@{m['destinatario_usuario']}"
                         st.caption(f"Para: {d} · {m['fecha'].strftime('%d/%m/%Y %H:%M')}")
                         with st.expander("Ver contenido"):
                             st.write(m['cuerpo'])
                             if st.button("🗑️ Eliminar", key=f"del_env_{m['id']}", use_container_width=True):
                                 eliminar_mensaje(m['id']); st.rerun()
-
-        with tab3:
+        with t3:
             st.markdown("#### ✉️ Enviar mensaje")
             dt = st.radio("Destinatario", ["📢 Todos los alumnos (broadcast)", "🎓 Un alumno",
                                             "👷 Un trabajador", "👑 Un admin"],
                           horizontal=False, key="msg_dest_tipo")
             did = None
-            if "Todos los alumnos" in dt:
+            if "Todos" in dt:
                 did = None
             else:
                 if "alumno" in dt: ud = obtener_todos_usuarios("alumno", solo_activos=True)
@@ -2445,15 +2286,12 @@ def panel_admin():
                     did = op[sel]
                 else:
                     st.warning("No hay usuarios."); did = -1
-
             asunto = st.text_input("Asunto", key="msg_asunto", max_chars=200)
             tipo_msg = st.selectbox("Tipo", ["mensaje", "aviso", "alerta"], key="msg_tipo")
             cuerpo = st.text_area("Mensaje", key="msg_cuerpo", height=150)
-
             aok = bool(asunto and asunto.strip())
             cok = bool(cuerpo and cuerpo.strip())
             dok = did != -1
-
             if st.button("📤 Enviar", type="primary", use_container_width=True,
                          disabled=not (aok and cok and dok), key="msg_enviar"):
                 enviar_mensaje(user['id'], asunto.strip(), cuerpo.strip(), did, tipo_msg)
@@ -2467,10 +2305,8 @@ def panel_admin():
         st.markdown("### 🚗 Vehículos registrados")
         st.caption("Busca un vehículo para ver su historial.")
         bv = st.text_input("🔍 Buscar por placas, alumno o matrícula", key="veh_buscar_admin").strip()
-
         with st.spinner("🔎 Buscando..."):
             vh = buscar_vehiculos_admin(bv if bv else None, limite=50)
-
         if not vh:
             st.info("No se encontraron vehículos.")
         else:
@@ -2488,7 +2324,6 @@ def panel_admin():
                         if st.button("📜 Historial", key=f"hist_veh_{v['id']}", use_container_width=True):
                             st.session_state[f"ver_hist_veh_{v['id']}"] = not st.session_state.get(f"ver_hist_veh_{v['id']}", False)
                             st.rerun()
-
                     if st.session_state.get(f"ver_hist_veh_{v['id']}", False):
                         st.markdown("---")
                         st.markdown(f"#### 📜 Historial de {v['placas']}")
@@ -2510,7 +2345,6 @@ def panel_admin():
                                 st.metric("Permanencia prom.", ps)
                             with cc:
                                 st.metric("Estado", "🟢 DENTRO" if act else "🔴 FUERA")
-
                             df_h = pd.DataFrame([{
                                 'Fecha': h['hora_entrada'].strftime("%d/%m/%Y %H:%M") if h['hora_entrada'] else "",
                                 'Salida': h['hora_salida'].strftime("%d/%m/%Y %H:%M") if h['hora_salida'] else "En curso",
@@ -2519,7 +2353,6 @@ def panel_admin():
                                              if h['hora_salida'] else "—")
                             } for h in hist[:30]])
                             st.dataframe(df_h, use_container_width=True, hide_index=True)
-
                             if st.button("❌ Cerrar historial", key=f"cerrar_hist_{v['id']}", use_container_width=True):
                                 st.session_state[f"ver_hist_veh_{v['id']}"] = False
                                 st.rerun()
@@ -2542,16 +2375,15 @@ def panel_admin():
 if st.session_state.usuario is not None:
     rol = st.session_state.usuario['rol']
     iconos = {'alumno': '🎓', 'trabajador': '👷', 'admin': '👑'}
-
-    col_user, col_brand, col_salir = st.columns([3, 2, 1])
-    with col_user:
+    c1, c2, c3 = st.columns([3, 2, 1])
+    with c1:
         st.markdown(
             f"<div style='padding-top: 10px; color: #C9A961;'>"
             f"<b>{iconos.get(rol, '👤')} @{st.session_state.usuario['usuario']}</b>"
             f"</div>", unsafe_allow_html=True)
-    with col_brand:
+    with c2:
         st.markdown(mostrar_marca_cudy(), unsafe_allow_html=True)
-    with col_salir:
+    with c3:
         if st.button("🚪 Salir", use_container_width=True):
             cerrar_sesion()
 
