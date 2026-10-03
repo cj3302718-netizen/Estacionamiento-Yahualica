@@ -2296,25 +2296,46 @@ def panel_admin():
             rango_txt = (f"Período: {fecha_desde.strftime('%d/%m/%Y')} - {fecha_hasta.strftime('%d/%m/%Y')}"
                          if fecha_desde and fecha_hasta else "Período: Todo el historial")
 
-            col_a, col_b = st.columns(2)
-            with col_a:
-                with st.spinner("📊 Generando Excel..."):
+            # Generar archivos UNA sola vez, fuera de columnas
+            excel_data = None
+            pdf_data = None
+            with st.spinner("📦 Preparando archivos de descarga..."):
+                try:
                     excel_data = exportar_excel_profesional(
                         df_export, "Reporte de Registros de Estacionamiento",
                         f"{rango_txt} | Total: {total} registro(s)")
-                st.download_button("📊 Excel", data=excel_data,
-                    file_name=f"registros_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True, key="dl_reg_xlsx")
-            with col_b:
-                with st.spinner("📄 Generando PDF..."):
+                except Exception as e:
+                    st.error(f"Error generando Excel: {e}")
+                try:
                     pdf_data = generar_pdf_reporte(
                         df_export, "Reporte de Registros",
                         f"{rango_txt} | Página {pagina}")
-                st.download_button("📄 PDF", data=pdf_data,
-                    file_name=f"registros_{datetime.now().strftime('%Y%m%d')}.pdf",
-                    mime="application/pdf",
-                    use_container_width=True, type="primary", key="dl_reg_pdf")
+                except Exception as e:
+                    st.error(f"Error generando PDF: {e}")
+
+            # Botones en columnas (sin spinner dentro)
+            col_a, col_b = st.columns(2)
+            with col_a:
+                if excel_data is not None:
+                    st.download_button(
+                        "📊 Descargar Excel",
+                        data=excel_data,
+                        file_name=f"registros_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
+                        key="dl_reg_xlsx"
+                    )
+            with col_b:
+                if pdf_data is not None:
+                    st.download_button(
+                        "📄 Descargar PDF",
+                        data=pdf_data,
+                        file_name=f"registros_{datetime.now().strftime('%Y%m%d')}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True,
+                        type="primary",
+                        key="dl_reg_pdf"
+                    )
 
             st.markdown("---")
 
@@ -2431,25 +2452,46 @@ def panel_admin():
             rango_txt = (f"Período: {fecha_desde.strftime('%d/%m/%Y')} - {fecha_hasta.strftime('%d/%m/%Y')}"
                          if fecha_desde and fecha_hasta else "Período: Todo el historial")
 
-            col_a, col_b = st.columns(2)
-            with col_a:
-                with st.spinner("📊 Generando Excel..."):
+            # Generar archivos UNA sola vez, fuera de columnas
+            excel_data = None
+            pdf_data = None
+            with st.spinner("📦 Preparando archivos de descarga..."):
+                try:
                     excel_data = exportar_excel_profesional(
                         df_logs, "Reporte de Auditoría del Sistema",
                         f"{rango_txt} | Total: {total} evento(s)")
-                st.download_button("📊 Excel", data=excel_data,
-                    file_name=f"auditoria_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True, key="dl_aud_xlsx")
-            with col_b:
-                with st.spinner("📄 Generando PDF..."):
+                except Exception as e:
+                    st.error(f"Error generando Excel: {e}")
+                try:
                     pdf_data = generar_pdf_reporte(
                         df_logs, "Reporte de Auditoría",
                         f"{rango_txt} | Página {pagina}")
-                st.download_button("📄 PDF", data=pdf_data,
-                    file_name=f"auditoria_{datetime.now().strftime('%Y%m%d')}.pdf",
-                    mime="application/pdf",
-                    use_container_width=True, type="primary", key="dl_aud_pdf")
+                except Exception as e:
+                    st.error(f"Error generando PDF: {e}")
+
+            # Botones en columnas (sin spinner dentro)
+            col_a, col_b = st.columns(2)
+            with col_a:
+                if excel_data is not None:
+                    st.download_button(
+                        "📊 Descargar Excel",
+                        data=excel_data,
+                        file_name=f"auditoria_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
+                        key="dl_aud_xlsx"
+                    )
+            with col_b:
+                if pdf_data is not None:
+                    st.download_button(
+                        "📄 Descargar PDF",
+                        data=pdf_data,
+                        file_name=f"auditoria_{datetime.now().strftime('%Y%m%d')}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True,
+                        type="primary",
+                        key="dl_aud_pdf"
+                    )
 
             st.markdown("---")
 
