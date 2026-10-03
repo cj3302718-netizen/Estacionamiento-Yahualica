@@ -211,9 +211,6 @@ st.markdown("""
     .stTabs [data-baseweb="tab"] { transition: all 0.3s ease !important; }
     .stTabs [data-baseweb="tab"]:hover { color: #C9A961 !important; }
 
-    /* ============================================================ */
-    /* SPINNERS PERSONALIZADOS (paleta CUY)                          */
-    /* ============================================================ */
     .stSpinner > div > div {
         border-top-color: #C9A961 !important;
         border-left-color: #C9A961 !important;
@@ -1224,13 +1221,42 @@ def _dashboard_datos_vivo():
 
 
 def _render_lista_vehiculos_dentro(user):
+    # --- BUSCADOR ---
+    buscar = st.text_input(
+        "🔍 Buscar vehículo (placas, nombre o matrícula)",
+        key="buscar_dentro_caseta",
+        placeholder="Ej. ABC-1234 o Juan Pérez"
+    )
+
     dentro = obtener_vehiculos_dentro()
 
     if not dentro:
         st.info("No hay vehículos dentro.")
         return
 
-    st.write(f"**Total: {len(dentro)}**")
+    # --- FILTRAR ---
+    if buscar and buscar.strip():
+        termino = buscar.strip().lower()
+        dentro_filtrado = [
+            v for v in dentro if
+            termino in (v['placas'] or '').lower() or
+            termino in (v['nombre_completo'] or '').lower() or
+            termino in (v['matricula'] or '').lower()
+        ]
+        if len(dentro_filtrado) < len(dentro):
+            st.caption(f"🔎 **{len(dentro_filtrado)}** resultado(s) de **{len(dentro)}** para '{buscar}'")
+        else:
+            st.write(f"**Total: {len(dentro_filtrado)}**")
+        dentro = dentro_filtrado
+
+    else:
+        st.write(f"**Total: {len(dentro)}**")
+
+    if not dentro:
+        st.info("No hay vehículos que coincidan con la búsqueda.")
+        return
+
+    # --- LISTA ---
     for v in dentro:
         with st.container(border=True):
             icono = "🚗" if v['tipo'] == 'Auto' else "🏍️"
@@ -2187,7 +2213,7 @@ if st.session_state.usuario is not None:
     col_user, col_brand, col_salir = st.columns([3, 2, 1])
     with col_user:
         st.markdown(
-            f"<div style='padding-top: 10px; color: #C9A961;'>">
+            f"<div style='padding-top: 10px; color: #C9A961;'>"
             f"<b>{iconos.get(rol, '👤')} @{st.session_state.usuario['usuario']}</b>"
             f"</div>",
             unsafe_allow_html=True)
