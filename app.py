@@ -50,44 +50,114 @@ COLOR_DORADO = "#C9A961"
 COLOR_CREMA = "#F5F0E8"
 COLOR_AZUL = "#0066B3"
 
-# --- ESTILOS ---
+# --- ESTILOS CON ANIMACIONES ---
 st.markdown("""
 <style>
+    /* ============================================================ */
+    /* KEYFRAMES                                                     */
+    /* ============================================================ */
+    @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes fadeInScale {
+        from { opacity: 0; transform: scale(0.95); }
+        to { opacity: 1; transform: scale(1); }
+    }
+
+    @keyframes slideInRight {
+        from { opacity: 0; transform: translateX(100px); }
+        to { opacity: 1; transform: translateX(0); }
+    }
+
+    @keyframes pulse {
+        0%, 100% { transform: scale(1); box-shadow: 0 0 30px rgba(201, 169, 97, 0.6), 0 0 60px rgba(123, 27, 46, 0.4); }
+        50% { transform: scale(1.03); box-shadow: 0 0 40px rgba(201, 169, 97, 0.8), 0 0 80px rgba(123, 27, 46, 0.6); }
+    }
+
     .stApp {
         background: radial-gradient(ellipse at top, #1a0a0f 0%, #0d0407 40%, #050203 100%) !important;
     }
 
-    header[data-testid="stHeader"] {
-        background: rgba(0, 0, 0, 0) !important;
+    header[data-testid="stHeader"] { background: rgba(0, 0, 0, 0) !important; }
+    section[data-testid="stSidebar"] { background: #0f0508 !important; }
+
+    .titulo-principal {
+        text-align: center; color: #C9A961; font-size: 2rem; font-weight: 800;
+        margin-bottom: 0; letter-spacing: 2px;
+        animation: fadeInUp 0.8s ease-out;
+    }
+    .subtitulo {
+        text-align: center; color: #A89968; font-size: 0.9rem;
+        margin-top: -8px; margin-bottom: 20px;
+        animation: fadeInUp 1s ease-out 0.2s both;
     }
 
-    section[data-testid="stSidebar"] {
-        background: #0f0508 !important;
+    .panel-header {
+        background: linear-gradient(135deg, #7B1B2E 0%, #D7192D 100%);
+        padding: 14px 16px; border-radius: 12px; color: #FFFFFF;
+        font-weight: 700; margin-bottom: 16px; font-size: 1.05rem; line-height: 1.3;
+        box-shadow: 0 0 20px rgba(123, 27, 46, 0.4);
+        animation: fadeInUp 0.6s ease-out;
     }
 
-    .titulo-principal { text-align: center; color: #C9A961; font-size: 2rem; font-weight: 800; margin-bottom: 0; letter-spacing: 2px; }
-    .subtitulo { text-align: center; color: #A89968; font-size: 0.9rem; margin-top: -8px; margin-bottom: 20px; }
-
-    .panel-header { background: linear-gradient(135deg, #7B1B2E 0%, #D7192D 100%); padding: 14px 16px; border-radius: 12px; color: #FFFFFF; font-weight: 700; margin-bottom: 16px; font-size: 1.05rem; line-height: 1.3; box-shadow: 0 0 20px rgba(123, 27, 46, 0.4); }
-
-    .contador-card { background: #1a0a0f; border: 2px solid #C9A961; border-radius: 16px; padding: 14px; text-align: center; box-shadow: 0 0 15px rgba(201, 169, 97, 0.35); margin-bottom: 10px; }
+    .contador-card {
+        background: #1a0a0f; border: 2px solid #C9A961; border-radius: 16px;
+        padding: 14px; text-align: center;
+        box-shadow: 0 0 15px rgba(201, 169, 97, 0.35); margin-bottom: 10px;
+        animation: fadeInScale 0.6s ease-out;
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    .contador-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 0 30px rgba(201, 169, 97, 0.6);
+    }
     .contador-card h4 { color: #A89968; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; margin: 0; }
-    .contador-card .numero { font-size: 1.6rem; font-weight: 800; color: #C9A961; margin-top: 4px; }
+    .contador-card .numero { font-size: 1.6rem; font-weight: 800; color: #C9A961; margin-top: 4px; transition: color 0.3s ease; }
+    .contador-card:hover .numero { color: #F5F0E8; }
 
-    .edit-form { background: #0f0508; border: 2px dashed #C9A961; border-radius: 12px; padding: 16px; margin-top: 10px; }
+    .edit-form {
+        background: #0f0508; border: 2px dashed #C9A961; border-radius: 12px;
+        padding: 16px; margin-top: 10px;
+        animation: fadeInUp 0.4s ease-out;
+    }
 
-    .hist-item { background: #1a0a0f; border-left: 3px solid #C9A961; border-radius: 8px; padding: 12px 14px; margin-bottom: 8px; }
+    .hist-item {
+        background: #1a0a0f; border-left: 3px solid #C9A961; border-radius: 8px;
+        padding: 12px 14px; margin-bottom: 8px;
+        animation: fadeInUp 0.4s ease-out;
+        transition: transform 0.2s ease, background 0.2s ease;
+    }
+    .hist-item:hover { transform: translateX(4px); background: #240e15; }
     .hist-duracion { color: #A89968; font-size: 0.8rem; }
 
-    .log-row { background: #1a0a0f; border-left: 3px solid #C9A961; border-radius: 8px; padding: 10px 14px; margin-bottom: 8px; }
+    .log-row {
+        background: #1a0a0f; border-left: 3px solid #C9A961; border-radius: 8px;
+        padding: 10px 14px; margin-bottom: 8px;
+        animation: fadeInUp 0.4s ease-out;
+        transition: transform 0.2s ease, background 0.2s ease;
+    }
+    .log-row:hover { transform: translateX(4px); background: #240e15; }
     .log-accion { font-weight: 700; font-size: 0.85rem; }
     .log-fecha { color: #A89968; font-size: 0.75rem; }
     .log-detalle { color: #E8DFD0; font-size: 0.85rem; margin-top: 4px; }
 
-    .ocupacion-label { display:flex; justify-content:space-between; font-size:0.88rem; margin-bottom: 4px; margin-top: 8px; }
+    .ocupacion-label { display: flex; justify-content: space-between; font-size: 0.88rem; margin-bottom: 4px; margin-top: 8px; }
     .ocupacion-label b { color: #C9A961; }
 
-    .kpi-card { background: linear-gradient(135deg, #1a0a0f 0%, #2a1015 100%); border: 1px solid rgba(201, 169, 97, 0.35); border-radius: 14px; padding: 14px 16px; text-align: center; }
+    .kpi-card {
+        background: linear-gradient(135deg, #1a0a0f 0%, #2a1015 100%);
+        border: 1px solid rgba(201, 169, 97, 0.35); border-radius: 14px;
+        padding: 14px 16px; text-align: center;
+        animation: fadeInUp 0.6s ease-out;
+        transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+    }
+    .kpi-card:hover {
+        transform: translateY(-3px);
+        border-color: #C9A961;
+        box-shadow: 0 0 20px rgba(201, 169, 97, 0.4);
+    }
     .kpi-card .kpi-label { color: #A89968; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.8px; }
     .kpi-card .kpi-value { font-size: 1.7rem; font-weight: 800; color: #F5F0E8; margin-top: 2px; }
     .kpi-card .kpi-delta { font-size: 0.8rem; margin-top: 2px; }
@@ -95,61 +165,78 @@ st.markdown("""
     .delta-down { color: #ff6666; }
     .delta-neutral { color: #A89968; }
 
-    .bienvenida-card { background: linear-gradient(135deg, #1a3a1a 0%, #2a5028 100%); border: 2px solid #00ff88; border-radius: 16px; padding: 18px; text-align: center; margin-bottom: 16px; box-shadow: 0 0 20px rgba(0, 255, 136, 0.3); }
+    .bienvenida-card {
+        background: linear-gradient(135deg, #1a3a1a 0%, #2a5028 100%);
+        border: 2px solid #00ff88; border-radius: 16px; padding: 18px;
+        text-align: center; margin-bottom: 16px;
+        box-shadow: 0 0 20px rgba(0, 255, 136, 0.3);
+        animation: fadeInScale 0.6s ease-out;
+    }
     .bienvenida-card h3 { color: #00ff88; margin: 0; font-size: 1.1rem; }
     .bienvenida-card p { color: #ffffff; margin: 6px 0 0 0; font-size: 0.95rem; }
     .bienvenida-card .placas { color: #00ff88; font-weight: 800; font-size: 1.3rem; }
 
-    .val-ok { color: #00ff88; font-size: 0.8rem; margin-top: -8px; margin-bottom: 8px; }
-    .val-error { color: #ff5555; font-size: 0.8rem; margin-top: -8px; margin-bottom: 8px; }
+    .val-ok { color: #00ff88; font-size: 0.8rem; margin-top: -8px; margin-bottom: 8px; animation: fadeInUp 0.3s ease-out; }
+    .val-error { color: #ff5555; font-size: 0.8rem; margin-top: -8px; margin-bottom: 8px; animation: fadeInUp 0.3s ease-out; }
 
     .logo-medallon {
         display: inline-block;
         background: radial-gradient(circle at 30% 30%, #FFFFFF 0%, #F5F0E8 60%, #E8DFD0 100%);
-        border-radius: 50%;
-        padding: 6px;
-        border: 3px solid #C9A961;
+        border-radius: 50%; padding: 6px; border: 3px solid #C9A961;
         box-shadow: 0 0 30px rgba(201, 169, 97, 0.6), 0 0 60px rgba(123, 27, 46, 0.4);
         margin-bottom: 16px;
+        animation: pulse 3s ease-in-out infinite;
     }
-    .logo-medallon img {
-        width: 130px;
-        height: 130px;
-        border-radius: 50%;
-        display: block;
-        object-fit: cover;
-    }
+    .logo-medallon img { width: 130px; height: 130px; border-radius: 50%; display: block; object-fit: cover; }
 
     .logo-barra {
         display: inline-block;
         background: radial-gradient(circle, #FFFFFF 0%, #F5F0E8 100%);
-        border-radius: 50%;
-        padding: 2px;
-        border: 2px solid #C9A961;
+        border-radius: 50%; padding: 2px; border: 2px solid #C9A961;
         box-shadow: 0 0 8px rgba(201, 169, 97, 0.5);
-        vertical-align: middle;
-        margin-right: 8px;
+        vertical-align: middle; margin-right: 8px;
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
     }
-    .logo-barra img {
-        width: 40px;
-        height: 40px;
-        border-radius: 50%;
-        display: block;
-        object-fit: cover;
+    .logo-barra:hover {
+        transform: scale(1.1) rotate(5deg);
+        box-shadow: 0 0 15px rgba(201, 169, 97, 0.8);
     }
+    .logo-barra img { width: 40px; height: 40px; border-radius: 50%; display: block; object-fit: cover; }
 
-    .brand-cudy {
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-        gap: 10px;
-        padding: 6px 0;
-    }
+    .brand-cudy { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 6px 0; }
     .brand-cudy .texto { text-align: right; line-height: 1.1; }
     .brand-cudy .texto .linea1 { color: #A89968; font-size: 0.65rem; letter-spacing: 2px; text-transform: uppercase; font-weight: 600; }
     .brand-cudy .texto .linea2 { color: #C9A961; font-size: 0.95rem; font-weight: 800; letter-spacing: 1.5px; }
 
-    .stProgress > div > div > div > div { background-color: #C9A961 !important; }
+    .stProgress > div > div > div > div {
+        background: linear-gradient(90deg, #7B1B2E 0%, #C9A961 100%) !important;
+        transition: width 0.6s ease;
+    }
+
+    .stButton > button { transition: all 0.25s ease !important; position: relative; overflow: hidden; }
+    .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(201, 169, 97, 0.4) !important; }
+    .stButton > button:active { transform: translateY(0); }
+    .stButton > button[kind="primary"] { background: linear-gradient(135deg, #7B1B2E 0%, #D7192D 100%) !important; border: none !important; }
+    .stButton > button[kind="primary"]:hover { background: linear-gradient(135deg, #D7192D 0%, #7B1B2E 100%) !important; }
+
+    .stTextInput > div > div > input,
+    .stTextArea > div > div > textarea { transition: border-color 0.3s ease, box-shadow 0.3s ease !important; }
+    .stTextInput > div > div > input:focus,
+    .stTextArea > div > div > textarea:focus {
+        border-color: #C9A961 !important;
+        box-shadow: 0 0 0 3px rgba(201, 169, 97, 0.2), 0 0 15px rgba(201, 169, 97, 0.4) !important;
+    }
+
+    details[data-testid="stExpander"] { transition: all 0.3s ease; }
+    details[data-testid="stExpander"]:hover { border-color: rgba(201, 169, 97, 0.5) !important; }
+
+    div[data-testid="stToast"] { animation: slideInRight 0.4s ease-out !important; }
+
+    .stSelectbox > div > div > div { transition: border-color 0.3s ease; }
+    .stSelectbox > div > div > div:hover { border-color: rgba(201, 169, 97, 0.5) !important; }
+
+    .stTabs [data-baseweb="tab"] { transition: all 0.3s ease !important; }
+    .stTabs [data-baseweb="tab"]:hover { color: #C9A961 !important; }
 
     @media (max-width: 768px) {
         .stButton > button { min-height: 48px !important; font-size: 0.95rem !important; padding: 10px 14px !important; border-radius: 12px !important; }
@@ -450,9 +537,7 @@ def grafico_dona_ocupacion(autos_ocupados, autos_libres, motos_ocupados, motos_l
     colors = [COLOR_VINO_CLARO, COLOR_DORADO, "#2a2a2a"]
 
     fig = go.Figure(data=[go.Pie(
-        labels=labels,
-        values=values,
-        hole=0.6,
+        labels=labels, values=values, hole=0.6,
         marker=dict(colors=colors, line=dict(color="#0d0407", width=2)),
         textinfo="label+percent",
         textfont=dict(size=11, color=COLOR_CREMA),
@@ -460,18 +545,14 @@ def grafico_dona_ocupacion(autos_ocupados, autos_libres, motos_ocupados, motos_l
     )])
 
     fig.update_layout(
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font=dict(color=COLOR_CREMA, size=11),
-        margin=dict(l=10, r=10, t=10, b=10),
-        height=280,
+        margin=dict(l=10, r=10, t=10, b=10), height=280,
         showlegend=True,
         legend=dict(orientation="h", yanchor="bottom", y=-0.1, xanchor="center", x=0.5, font=dict(size=10, color=COLOR_CREMA)),
         annotations=[dict(
             text=f"<b>{autos_ocupados + motos_ocupados}</b><br><span style='font-size:10px'>Ocupados</span>",
-            x=0.5, y=0.5,
-            font=dict(size=18, color=COLOR_DORADO),
-            showarrow=False
+            x=0.5, y=0.5, font=dict(size=18, color=COLOR_DORADO), showarrow=False
         )]
     )
     return fig
@@ -479,90 +560,63 @@ def grafico_dona_ocupacion(autos_ocupados, autos_libres, motos_ocupados, motos_l
 
 def grafico_barras_horas(df_horas):
     fig = go.Figure(data=[go.Bar(
-        x=df_horas["hora_str"],
-        y=df_horas["entradas"],
-        marker=dict(
-            color=df_horas["entradas"],
-            colorscale=[[0, COLOR_VINO], [1, COLOR_DORADO]],
-            line=dict(color=COLOR_DORADO, width=1)
-        ),
-        text=df_horas["entradas"],
-        textposition="outside",
-        textfont=dict(color=COLOR_CREMA, size=10),
+        x=df_horas["hora_str"], y=df_horas["entradas"],
+        marker=dict(color=df_horas["entradas"], colorscale=[[0, COLOR_VINO], [1, COLOR_DORADO]], line=dict(color=COLOR_DORADO, width=1)),
+        text=df_horas["entradas"], textposition="outside", textfont=dict(color=COLOR_CREMA, size=10),
         hovertemplate="<b>%{x}</b><br>Entradas: %{y}<extra></extra>"
     )])
 
     fig.update_layout(
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font=dict(color=COLOR_CREMA, size=11),
         xaxis=dict(title="", gridcolor="rgba(201, 169, 97, 0.1)", tickfont=dict(color=COLOR_CREMA, size=10)),
         yaxis=dict(title="", gridcolor="rgba(201, 169, 97, 0.1)", tickfont=dict(color=COLOR_CREMA, size=10)),
-        margin=dict(l=10, r=10, t=20, b=10),
-        height=280,
-        showlegend=False
+        margin=dict(l=10, r=10, t=20, b=10), height=280, showlegend=False
     )
     return fig
 
 
 def grafico_linea_tendencia(df_dias):
     fig = go.Figure()
-
     fig.add_trace(go.Scatter(
-        x=df_dias["fecha_str"],
-        y=df_dias["entradas"],
+        x=df_dias["fecha_str"], y=df_dias["entradas"],
         mode="lines+markers",
         line=dict(color=COLOR_DORADO, width=3, shape="spline"),
         marker=dict(color=COLOR_VINO_CLARO, size=10, line=dict(color=COLOR_DORADO, width=2)),
-        fill="tozeroy",
-        fillcolor="rgba(123, 27, 46, 0.25)",
+        fill="tozeroy", fillcolor="rgba(123, 27, 46, 0.25)",
         hovertemplate="<b>%{x}</b><br>Entradas: %{y}<extra></extra>"
     ))
 
     fig.update_layout(
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font=dict(color=COLOR_CREMA, size=11),
         xaxis=dict(gridcolor="rgba(201, 169, 97, 0.1)", tickfont=dict(color=COLOR_CREMA, size=10)),
         yaxis=dict(gridcolor="rgba(201, 169, 97, 0.1)", tickfont=dict(color=COLOR_CREMA, size=10)),
-        margin=dict(l=10, r=10, t=20, b=10),
-        height=280,
-        showlegend=False
+        margin=dict(l=10, r=10, t=20, b=10), height=280, showlegend=False
     )
     return fig
 
 
 def grafico_barras_carreras(df_carreras):
     fig = go.Figure(data=[go.Bar(
-        y=df_carreras["carrera"],
-        x=df_carreras["visitas"],
-        orientation="h",
-        marker=dict(
-            color=df_carreras["visitas"],
-            colorscale=[[0, COLOR_VINO], [1, COLOR_DORADO]],
-            line=dict(color=COLOR_DORADO, width=1)
-        ),
-        text=df_carreras["visitas"],
-        textposition="outside",
-        textfont=dict(color=COLOR_CREMA, size=10),
+        y=df_carreras["carrera"], x=df_carreras["visitas"], orientation="h",
+        marker=dict(color=df_carreras["visitas"], colorscale=[[0, COLOR_VINO], [1, COLOR_DORADO]], line=dict(color=COLOR_DORADO, width=1)),
+        text=df_carreras["visitas"], textposition="outside", textfont=dict(color=COLOR_CREMA, size=10),
         hovertemplate="<b>%{y}</b><br>Visitas: %{x}<extra></extra>"
     )])
 
     fig.update_layout(
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font=dict(color=COLOR_CREMA, size=11),
         xaxis=dict(gridcolor="rgba(201, 169, 97, 0.1)", tickfont=dict(color=COLOR_CREMA, size=10)),
         yaxis=dict(gridcolor="rgba(201, 169, 97, 0.1)", tickfont=dict(color=COLOR_CREMA, size=10)),
-        margin=dict(l=10, r=10, t=20, b=10),
-        height=280,
-        showlegend=False
+        margin=dict(l=10, r=10, t=20, b=10), height=280, showlegend=False
     )
     return fig
 
 
 # =========================================================
-# HELPER: GENERAR PDF DEL QR (CUYPARK)
+# HELPER: GENERAR PDF DEL QR
 # =========================================================
 def generar_pdf_qr(user, vehiculo, qr_bytes):
     class PDF(FPDF):
@@ -613,7 +667,6 @@ def generar_pdf_qr(user, vehiculo, qr_bytes):
     pdf.cell(0, 6, "Boleto Digital de Estacionamiento", ln=1, align="C")
 
     pdf.ln(4)
-
     pdf.set_draw_color(201, 169, 97)
     pdf.set_line_width(0.5)
     pdf.line(60, pdf.get_y(), 150, pdf.get_y())
@@ -702,7 +755,6 @@ def generar_pdf_qr(user, vehiculo, qr_bytes):
     pdf.set_draw_color(201, 169, 97)
     pdf.set_line_width(0.6)
     pdf.rect(qr_x - 3, qr_y - 3, qr_size + 6, qr_size + 6)
-
     pdf.image(tmp_path, x=qr_x, y=qr_y, w=qr_size, h=qr_size)
 
     try:
@@ -714,12 +766,10 @@ def generar_pdf_qr(user, vehiculo, qr_bytes):
 
     pdf.set_font("Helvetica", "I", 9)
     pdf.set_text_color(100, 100, 100)
-    pdf.multi_cell(
-        0, 5,
+    pdf.multi_cell(0, 5,
         "Presenta este código QR en la caseta del estacionamiento tanto al entrar como al salir. "
         "Puedes imprimirlo o mostrarlo desde tu dispositivo móvil.",
-        align="C"
-    )
+        align="C")
 
     return bytes(pdf.output())
 
@@ -758,31 +808,13 @@ def mostrar_branding_login():
                 <div class="logo-medallon">
                     <img src="{LOGO_ESCUDO_URL}" alt="Colegio Universitario de Yahualica">
                 </div>
-                <div style="
-                    color: #C9A961;
-                    font-size: 0.7rem;
-                    letter-spacing: 4px;
-                    text-transform: uppercase;
-                    font-weight: 600;
-                    margin-top: 4px;
-                ">
+                <div style="color: #C9A961; font-size: 0.7rem; letter-spacing: 4px; text-transform: uppercase; font-weight: 600; margin-top: 4px;">
                     Colegio Universitario
                 </div>
-                <div style="
-                    color: #C9A961;
-                    font-size: 1.6rem;
-                    font-weight: 800;
-                    letter-spacing: 3px;
-                    margin-top: 2px;
-                ">
+                <div style="color: #C9A961; font-size: 1.6rem; font-weight: 800; letter-spacing: 3px; margin-top: 2px;">
                     DE YAHUALICA
                 </div>
-                <div style="
-                    width: 80px;
-                    height: 2px;
-                    background: linear-gradient(90deg, transparent, #C9A961, transparent);
-                    margin: 12px auto 0 auto;
-                "></div>
+                <div style="width: 80px; height: 2px; background: linear-gradient(90deg, transparent, #C9A961, transparent); margin: 12px auto 0 auto;"></div>
             </div>
         """, unsafe_allow_html=True)
 
@@ -810,7 +842,7 @@ def mostrar_marca_cudy():
 
 
 # =========================================================
-# HELPER: MI CUENTA (Contraseña + Teléfono)
+# HELPER: MI CUENTA
 # =========================================================
 def mostrar_mi_cuenta(user):
     with st.expander("🔧 Mi cuenta — Contraseña y contacto"):
@@ -821,10 +853,8 @@ def mostrar_mi_cuenta(user):
         tel_actual = user.get('telefono') or ""
         st.caption(f"Teléfono actual registrado: **{tel_actual if tel_actual else '(sin teléfono)'}**")
 
-        nuevo_tel = st.text_input("Nuevo teléfono (10 dígitos)",
-                                   value=tel_actual,
-                                   key=f"mt_tel_{user['id']}",
-                                   placeholder="444-123-4567")
+        nuevo_tel = st.text_input("Nuevo teléfono (10 dígitos)", value=tel_actual,
+                                   key=f"mt_tel_{user['id']}", placeholder="444-123-4567")
 
         tel_ok = False
         if nuevo_tel and nuevo_tel.strip():
@@ -863,11 +893,9 @@ def mostrar_mi_cuenta(user):
         st.markdown("#### 🔑 Cambiar mi contraseña")
         st.caption("Actualiza tu contraseña personal. Necesitas conocer la actual.")
 
-        p_actual = st.text_input("Contraseña actual", type="password",
-                                  key=f"cp_act_{user['id']}")
+        p_actual = st.text_input("Contraseña actual", type="password", key=f"cp_act_{user['id']}")
 
-        p_nueva = st.text_input("Nueva contraseña", type="password",
-                                 key=f"cp_new_{user['id']}")
+        p_nueva = st.text_input("Nueva contraseña", type="password", key=f"cp_new_{user['id']}")
         p_nueva_ok = False
         if p_nueva:
             if len(p_nueva) < 3:
@@ -876,8 +904,7 @@ def mostrar_mi_cuenta(user):
                 st.markdown('<div class="val-ok">✅ Contraseña válida</div>', unsafe_allow_html=True)
                 p_nueva_ok = True
 
-        p_confirm = st.text_input("Confirmar nueva contraseña", type="password",
-                                   key=f"cp_conf_{user['id']}")
+        p_confirm = st.text_input("Confirmar nueva contraseña", type="password", key=f"cp_conf_{user['id']}")
         p_conf_ok = False
         if p_confirm:
             if p_confirm == p_nueva:
@@ -1063,46 +1090,25 @@ def _dashboard_datos_vivo():
     autos = next((e for e in espacios if e['tipo'] == 'Auto'), None)
     motos = next((e for e in espacios if e['tipo'] == 'Moto'), None)
 
-    # --- LOGO CUY + TÍTULO ---
     col_logo, col_titulo = st.columns([1, 6])
     with col_logo:
         st.markdown(f"""
-            <div style="
-                background: radial-gradient(circle, #FFFFFF 0%, #F5F0E8 100%);
-                border-radius: 50%;
-                padding: 4px;
-                border: 3px solid {COLOR_DORADO};
-                box-shadow: 0 0 12px rgba(201, 169, 97, 0.5);
-                width: 70px;
-                height: 70px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            ">
+            <div style="background: radial-gradient(circle, #FFFFFF 0%, #F5F0E8 100%); border-radius: 50%; padding: 4px;
+                border: 3px solid {COLOR_DORADO}; box-shadow: 0 0 12px rgba(201, 169, 97, 0.5);
+                width: 70px; height: 70px; display: flex; align-items: center; justify-content: center;">
                 <img src="{LOGO_ESCUDO_URL}" style="width: 60px; height: 60px; border-radius: 50%;" alt="CUY">
             </div>
         """, unsafe_allow_html=True)
     with col_titulo:
         st.markdown(f"""
             <div style="padding-top: 8px;">
-                <div style="
-                    color: {COLOR_DORADO};
-                    font-size: 1.6rem;
-                    font-weight: 800;
-                    letter-spacing: 1px;
-                ">📊 Panel de Control</div>
-                <div style="
-                    color: {COLOR_CREMA};
-                    font-size: 0.85rem;
-                    opacity: 0.7;
-                    margin-top: -4px;
-                ">Colegio Universitario de Yahualica · Actualizado cada 15s</div>
+                <div style="color: {COLOR_DORADO}; font-size: 1.6rem; font-weight: 800; letter-spacing: 1px;">📊 Panel de Control</div>
+                <div style="color: {COLOR_CREMA}; font-size: 0.85rem; opacity: 0.7; margin-top: -4px;">Colegio Universitario de Yahualica · Actualizado cada 15s</div>
             </div>
         """, unsafe_allow_html=True)
 
     st.markdown("---")
 
-    # --- TARJETAS KPI ---
     col1, col2 = st.columns(2)
     with col1:
         if autos:
@@ -1169,7 +1175,6 @@ def _dashboard_datos_vivo():
 
         st.markdown("---")
 
-        # --- GRÁFICO 1: DONA DE OCUPACIÓN ---
         if autos and motos:
             st.markdown("#### 🍩 Distribución de ocupación")
             autos_libres = autos['capacidad_total'] - autos['ocupados']
@@ -1180,7 +1185,6 @@ def _dashboard_datos_vivo():
             )
             st.plotly_chart(fig_dona, use_container_width=True, config={"displayModeBar": False})
 
-        # --- GRÁFICO 2: HORAS DE MAYOR DEMANDA ---
         st.markdown("#### ⏰ Horas de mayor demanda (últimos 7 días)")
         hace_7 = hoy - timedelta(days=6)
         df_7d = df[df['fecha'] >= hace_7].copy()
@@ -1196,7 +1200,6 @@ def _dashboard_datos_vivo():
         else:
             st.caption("Sin datos suficientes en los últimos 7 días.")
 
-        # --- GRÁFICO 3: TENDENCIA 30 DÍAS ---
         st.markdown("#### 📅 Tendencia últimos 30 días")
         hace_30 = hoy - timedelta(days=29)
         df_30d = df[df['fecha'] >= hace_30].copy()
@@ -1211,7 +1214,6 @@ def _dashboard_datos_vivo():
         else:
             st.caption("Sin datos en los últimos 30 días.")
 
-        # --- GRÁFICO 4: TOP CARRERAS ---
         st.markdown("#### 🎓 Top 5 carreras con más uso")
         por_carrera = df[df['carrera'].notna()].groupby('carrera').size().reset_index(name='visitas')
         por_carrera = por_carrera.sort_values('visitas', ascending=True).tail(5)
@@ -1456,9 +1458,7 @@ def panel_alumno():
                             {f" · {h['marca']}" if h['marca'] else ""}
                             {f" · {h['modelo']}" if h['modelo'] else ""}
                         </div>
-                        <div style="color:#aaa; font-size:0.8rem; margin-top:2px;">
-                            ⬇️ Entrada: {fecha_entrada}
-                        </div>
+                        <div style="color:#aaa; font-size:0.8rem; margin-top:2px;">⬇️ Entrada: {fecha_entrada}</div>
                         {f'<div style="color:#aaa; font-size:0.8rem;">⬆️ Salida: {fecha_salida}</div>' if fecha_salida else ''}
                     </div>
                 """, unsafe_allow_html=True)
@@ -1512,25 +1512,15 @@ def panel_alumno():
         col_dl1, col_dl2 = st.columns(2)
 
         with col_dl1:
-            st.download_button(
-                "📥 Descargar PNG",
-                data=qr_info['imagen'],
-                file_name=f"QR_{qr_info['vehiculo']['placas']}.png",
-                mime="image/png",
-                use_container_width=True
-            )
+            st.download_button("📥 Descargar PNG", data=qr_info['imagen'],
+                file_name=f"QR_{qr_info['vehiculo']['placas']}.png", mime="image/png", use_container_width=True)
 
         with col_dl2:
             try:
                 pdf_bytes = generar_pdf_qr(user, qr_info['vehiculo'], qr_info['imagen'])
-                st.download_button(
-                    "📄 Descargar PDF profesional",
-                    data=pdf_bytes,
+                st.download_button("📄 Descargar PDF profesional", data=pdf_bytes,
                     file_name=f"CUYPARK_{qr_info['vehiculo']['placas']}_{user['matricula'] or 'alumno'}.pdf",
-                    mime="application/pdf",
-                    use_container_width=True,
-                    type="primary"
-                )
+                    mime="application/pdf", use_container_width=True, type="primary")
             except Exception as e:
                 st.error(f"Error al generar el PDF: {e}")
 
@@ -1624,17 +1614,11 @@ def panel_trabajador():
     else:
         st.markdown("### 🚘 Vehículos dentro")
 
-        auto_refresh = st.toggle(
-            "🔄 Auto-actualizar cada 10 segundos",
-            value=False,
+        auto_refresh = st.toggle("🔄 Auto-actualizar cada 10 segundos", value=False,
             key="auto_refresh_caseta",
-            help="La lista se actualizará sola para mostrar nuevos vehículos que entren."
-        )
+            help="La lista se actualizará sola para mostrar nuevos vehículos que entren.")
 
-        salida_en_curso = any(
-            k.startswith("salida_rapida_") and v
-            for k, v in st.session_state.items()
-        )
+        salida_en_curso = any(k.startswith("salida_rapida_") and v for k, v in st.session_state.items())
 
         if auto_refresh and not salida_en_curso:
             st.caption("🟢 Actualizando automáticamente cada 10 segundos")
@@ -1690,13 +1674,11 @@ def panel_admin():
             with col_a:
                 mat = st.text_input("Matrícula (opcional)", key="ca_mat")
                 mat_ok = mostrar_validacion(mat, validar_matricula, obligatorio=False)
-
                 car = st.text_input("Carrera (opcional)", key="ca_car")
                 car_ok = mostrar_validacion(car, validar_carrera, obligatorio=False)
             with col_b:
                 gru = st.text_input("Grupo (opcional)", key="ca_gru")
                 gru_ok = mostrar_validacion(gru, validar_grupo, obligatorio=False)
-
                 tel = st.text_input("Teléfono (opcional)", key="ca_tel", placeholder="10 dígitos")
                 tel_ok = mostrar_validacion(tel, validar_telefono, obligatorio=False)
 
@@ -1715,15 +1697,13 @@ def panel_admin():
             if st.button("✅ Crear Alumno", use_container_width=True, type="primary",
                          disabled=not todos_ok, key="ca_btn"):
                 try:
-                    crear_usuario(
-                        usuario=u.lower().strip(), password=p, rol='alumno',
+                    crear_usuario(usuario=u.lower().strip(), password=p, rol='alumno',
                         tipo_usuario='alumno', nombre_completo=nombre.strip(),
                         matricula=mat.strip() if mat else None,
                         carrera=car.strip() if car else None,
                         grupo=gru.strip() if gru else None,
                         telefono=tel.strip() if tel else None,
-                        id_estudiante=id_est.strip() if id_est else None
-                    )
+                        id_estudiante=id_est.strip() if id_est else None)
                     registrar_log(user['id'], "CREAR_ALUMNO",
                                   f"Alumno @{u.lower().strip()} ({nombre}) creado con ID {id_est}",
                                   "Super_Usuarios")
@@ -1736,13 +1716,10 @@ def panel_admin():
         elif sub == "👷 Crear Trabajador":
             u = st.text_input("Usuario", key="ct_u")
             u_ok = mostrar_validacion(u, validar_usuario)
-
             p = st.text_input("Contraseña", type="password", key="ct_p")
             p_ok = mostrar_validacion(p, validar_password)
-
             nombre = st.text_input("Nombre completo", key="ct_n")
             n_ok = mostrar_validacion(nombre, validar_nombre)
-
             tel = st.text_input("Teléfono (opcional)", key="ct_tel", placeholder="10 dígitos")
             tel_ok = mostrar_validacion(tel, validar_telefono, obligatorio=False)
 
@@ -1756,11 +1733,9 @@ def panel_admin():
             if st.button("✅ Crear Trabajador", use_container_width=True, type="primary",
                          disabled=not todos_ok, key="ct_btn"):
                 try:
-                    crear_usuario(
-                        usuario=u.lower().strip(), password=p, rol='trabajador',
+                    crear_usuario(usuario=u.lower().strip(), password=p, rol='trabajador',
                         tipo_usuario='administrativo', nombre_completo=nombre.strip(),
-                        telefono=tel.strip() if tel else None
-                    )
+                        telefono=tel.strip() if tel else None)
                     registrar_log(user['id'], "CREAR_TRABAJADOR",
                                   f"Trabajador @{u.lower().strip()} ({nombre}) creado", "Super_Usuarios")
                     limpiar_campos(['ct_u', 'ct_p', 'ct_n', 'ct_tel'])
@@ -1771,16 +1746,12 @@ def panel_admin():
 
         elif sub == "👑 Crear Admin":
             st.warning("⚠️ Los admins tienen acceso total. Otorga este rol con precaución.")
-
             u = st.text_input("Usuario", key="cA_u")
             u_ok = mostrar_validacion(u, validar_usuario)
-
             p = st.text_input("Contraseña", type="password", key="cA_p")
             p_ok = mostrar_validacion(p, validar_password)
-
             nombre = st.text_input("Nombre completo", key="cA_n")
             n_ok = mostrar_validacion(nombre, validar_nombre)
-
             tel = st.text_input("Teléfono (opcional)", key="cA_tel")
             tel_ok = mostrar_validacion(tel, validar_telefono, obligatorio=False)
 
@@ -1794,11 +1765,9 @@ def panel_admin():
             if st.button("✅ Crear Administrador", use_container_width=True, type="primary",
                          disabled=not todos_ok, key="cA_btn"):
                 try:
-                    crear_usuario(
-                        usuario=u.lower().strip(), password=p, rol='admin',
+                    crear_usuario(usuario=u.lower().strip(), password=p, rol='admin',
                         tipo_usuario='administrativo', nombre_completo=nombre.strip(),
-                        telefono=tel.strip() if tel else None
-                    )
+                        telefono=tel.strip() if tel else None)
                     registrar_log(user['id'], "CREAR_ADMIN",
                                   f"Administrador @{u.lower().strip()} ({nombre}) creado", "Super_Usuarios")
                     limpiar_campos(['cA_u', 'cA_p', 'cA_n', 'cA_tel'])
@@ -1885,8 +1854,7 @@ def panel_admin():
                                 st.caption("")
                             elif bloqueado_boton:
                                 if st.button("🔐", key=f"unlock_bloq_{u['id']}",
-                                             help="Desbloquear cuenta (intentos fallidos)",
-                                             use_container_width=True):
+                                             help="Desbloquear cuenta (intentos fallidos)", use_container_width=True):
                                     ok, msg = desbloquear_usuario(u['id'])
                                     if ok:
                                         registrar_log(user['id'], "DESBLOQUEAR_USUARIO",
@@ -1908,10 +1876,7 @@ def panel_admin():
                                     st.warning("⚠️ **Estás a punto de eliminar a un ADMINISTRADOR.** Esta acción es crítica.")
                                     texto_confirmacion = st.text_input(
                                         "Escribe **ELIMINAR** (en mayúsculas) para habilitar el botón:",
-                                        key=f"confirma_texto_{u['id']}",
-                                        placeholder="ELIMINAR",
-                                        label_visibility="visible"
-                                    )
+                                        key=f"confirma_texto_{u['id']}", placeholder="ELIMINAR", label_visibility="visible")
                                     confirmacion_ok = (texto_confirmacion.strip() == "ELIMINAR")
                                     if not confirmacion_ok and texto_confirmacion:
                                         st.markdown('<div class="val-error">❌ Debes escribir exactamente ELIMINAR (en mayúsculas)</div>', unsafe_allow_html=True)
@@ -1921,8 +1886,7 @@ def panel_admin():
                                 col_si, col_no = st.columns(2)
                                 with col_si:
                                     st.button("✅ Sí, eliminar", key=f"si_del_{u['id']}", type="primary",
-                                              use_container_width=True,
-                                              disabled=not confirmacion_ok,
+                                              use_container_width=True, disabled=not confirmacion_ok,
                                               on_click=cb_eliminar_usuario,
                                               args=(u['id'], user['id'], user['usuario'], u['usuario'], u['nombre_completo']))
                                 with col_no:
@@ -1950,7 +1914,6 @@ def panel_admin():
 
                         ed_nombre = st.text_input("Nombre completo", value=u['nombre_completo'], key=f"ed_n_{u['id']}")
                         ed_n_ok = mostrar_validacion(ed_nombre, validar_nombre)
-
                         ed_tel = st.text_input("Teléfono", value=u['telefono'] or "", key=f"ed_tel_{u['id']}")
                         ed_tel_ok = mostrar_validacion(ed_tel, validar_telefono, obligatorio=False)
 
@@ -1959,13 +1922,11 @@ def panel_admin():
                             with col_a:
                                 ed_id = st.text_input("ID Estudiante", value=u['id_estudiante'] or "", key=f"ed_id_{u['id']}")
                                 ed_id_ok = mostrar_validacion(ed_id, validar_id_estudiante, obligatorio=False)
-
                                 ed_mat = st.text_input("Matrícula", value=u['matricula'] or "", key=f"ed_mat_{u['id']}")
                                 ed_mat_ok = mostrar_validacion(ed_mat, validar_matricula, obligatorio=False)
                             with col_b:
                                 ed_car = st.text_input("Carrera", value=u['carrera'] or "", key=f"ed_car_{u['id']}")
                                 ed_car_ok = mostrar_validacion(ed_car, validar_carrera, obligatorio=False)
-
                                 ed_gru = st.text_input("Grupo", value=u['grupo'] or "", key=f"ed_gru_{u['id']}")
                                 ed_gru_ok = mostrar_validacion(ed_gru, validar_grupo, obligatorio=False)
 
@@ -2016,8 +1977,7 @@ def panel_admin():
                                         grupo=ed_gru.strip() or None,
                                         id_estudiante=ed_id.strip() or None,
                                         tipo_usuario=u['tipo_usuario'],
-                                        nueva_password=ed_pass if ed_pass else None
-                                    )
+                                        nueva_password=ed_pass if ed_pass else None)
                                     detalle = f"Usuario @{u['usuario']} editado"
                                     if cambios: detalle += " — " + "; ".join(cambios)
                                     registrar_log(user['id'], "EDITAR_USUARIO", detalle, "Super_Usuarios", u['id'])
@@ -2036,7 +1996,6 @@ def panel_admin():
                                                 f"ed_mat_{u['id']}", f"ed_car_{u['id']}", f"ed_gru_{u['id']}",
                                                 f"ed_p_{u['id']}", f"ed_p2_{u['id']}"])
                                 st.rerun()
-
                         st.markdown('</div>', unsafe_allow_html=True)
 
     elif seccion == "📋 Registros":
@@ -2240,14 +2199,12 @@ if st.session_state.usuario is not None:
     iconos = {'alumno': '🎓', 'trabajador': '👷', 'admin': '👑'}
 
     col_user, col_brand, col_salir = st.columns([3, 2, 1])
-
     with col_user:
         st.markdown(
             f"<div style='padding-top: 10px; color: #C9A961;'>"
             f"<b>{iconos.get(rol, '👤')} @{st.session_state.usuario['usuario']}</b>"
             f"</div>",
-            unsafe_allow_html=True
-        )
+            unsafe_allow_html=True)
     with col_brand:
         st.markdown(mostrar_marca_cudy(), unsafe_allow_html=True)
     with col_salir:
