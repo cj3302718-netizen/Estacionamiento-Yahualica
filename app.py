@@ -4,6 +4,7 @@ import re
 import os
 import tempfile
 import urllib.request
+import threading
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -41,6 +42,14 @@ from db import (
     obtener_vehiculos_alerta,
     crear_tabla_mensajes, crear_indices,
 )
+
+try:
+    from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode
+    import av
+    import cv2
+    WEBRTC_DISPONIBLE = True
+except ImportError:
+    WEBRTC_DISPONIBLE = False
 
 LOGO_COMPLETO_URL = "https://raw.githubusercontent.com/cj3302718-netizen/Estacionamiento-Yahualica/main/logo_completo.png"
 LOGO_ESCUDO_URL = "https://raw.githubusercontent.com/cj3302718-netizen/Estacionamiento-Yahualica/main/logo_escudo.png"
@@ -132,6 +141,276 @@ st.markdown("""
 
 
 # ============================================================
+# ESCÁNER QR EN TIEMPO REAL
+# ============================================================
+if WEBRTC_DISPONIBLE:
+    class QRScannerProcessor(VideoProcessorBase):
+        """Detecta códigos QR automáticamente en tiempo real."""
+
+        def __init__(self):
+            self.detector = cv2.QRCodeDetector()
+            self._qr = None
+            self._lock = threading.Lock()
+            self._frame_count = 0
+
+        def recv(self, frame):
+            img = frame.to_ndarray(format="bgr24")
+            self._frame_count += 1
+
+            if self._frame_count % 3 == 0:
+                with self._lock:
+                    if self._qr is None:
+                        try:
+                            data, points, _ = self.detector.detectAndDecode(img)
+                            if data and len(data.strip()) > 3:
+                                self._qr = data.strip()
+                        except Exception:
+                            pass
+
+            with self._lock:
+                detectado = self._qr is not None
+
+            if detectado:
+                h, w = img.shape[:2]
+                cv2.rectangle(img, (8, 8), (w - 8, h - 8), (0, 255, 0), 6)
+                cv2.putText(img, "QR DETECTADO", (25, 55),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.3, (0, 255, 0), 3)
+                cv2.putText(img, "Suelta el codigo...", (25, 95),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 255, 0), 2)
+
+            return av.VideoFrame.from_ndarray(img, format="bgr24")
+
+        def pop_qr(self):
+            with self._lock:
+                qr = self._qr
+                self._qr = None
+                return qr
+
+
+@st.fragment(run_every="1s")
+def _poll_qr_scanner():
+    processor = st.session_state.get("qr_processor_ref")
+    if processor is None:
+        return
+    qr = processor.pop_qr()
+    if qr:
+        st.session_state["qr_escaneado_actual"] = qr
+        try:
+            st.rerun(scope="app")
+        except TypeError:
+            st.rerun()
+
+
+def _mostrar_datos_qr_escaneado(user, qr_raw):
+    try:
+        if isinstance(qr_raw, str) and qr_raw.strip().startswith("{"):
+            data = json.loads(qr_raw)
+        else:
+            data = {"placas": str(qr_raw).strip()}
+    except Exception:
+        data = {"placas": str(qr_raw).strip()}
+
+    placas = (data.get("placas") or "").upper().strip().replace("-", "").replace(" ", "")
+
+    if not placas:
+        st.error("❌ QR inválido. No se pudieron extraer las placas.")
+        if st.button("🔄 Volver a escanear", use_container_width=True, key="qr_reset_1"):
+            st.session_state["qr_escaneado_actual"] = None
+            st.rerun()
+        return
+
+    st.success("✅ **QR detectado correctamente**")
+
+    with st.spinner("🔎 Buscando vehículo..."):
+        vehiculo = obtener_vehiculo_por_placas(placas)
+
+    if not vehiculo:
+        st.error(f"❌ No existe ningún vehículo registrado con las placas **{placas}**.")
+        st.caption("Verifica que el alumno haya registrado su vehículo en la app.")
+        if st.button("🔄 Volver a escanear", use_container_width=True, key="qr_reset_2"):
+            st.session_state["qr_escaneado_actual"] = None
+            st.rerun()
+        return
+
+    st.markdown("### 👤 Datos del alumno")
+    icono = "🚗" if vehiculo['tipo'] == 'Auto' else "🏍️"
+
+    with st.container(border=True):
+        col_icon, col_info = st.columns([1, 4])
+        with col_icon:
+            st.markdown(
+                f"<div style='text-align:center; font-size:3.5rem; padding-top:12px;'>{icono}</div>",
+                unsafe_allow_html=True
+            )
+        with col_info:
+            st.markdown(f"### {vehiculo['nombre_completo']}")
+            col_a, col_b = st.columns(2)
+            with col_a:
+                st.markdown(f"**Matrícula:** {vehiculo['matricula'] or 'N/A'}")
+                st.markdown(f"**Carrera:** {vehiculo['carrera'] or 'N/A'}")
+            with col_b:
+                st.markdown(f"**ID:** {vehiculo['id_estudiante'] or 'N/A'}")
+                st.markdown(f"**Grupo:** {vehiculo['grupo'] or 'N/A'}")
+
+            st.markdown(
+                f"<div style='margin-top:10px; padding:10px 14px; "
+                f"background:linear-gradient(135deg,#7B1B2E,#D7192D); "
+                f"border-radius:10px; display:inline-block;'>"
+                f"<b style='color:#C9A961; font-size:1.15rem; letter-spacing:1px;'>"
+                f"{vehiculo['tipo']} — {vehiculo['placas']}</b>"
+                f"</div>",
+                unsafe_allow_html=True
+            )
+            if vehiculo.get('marca') or vehiculo.get('modelo') or vehiculo.get('color'):
+                detalles = " | ".join(filter(None, [
+                    vehiculo.get('marca'),
+                    vehiculo.get('modelo'),
+                    vehiculo.get('color')
+                ]))
+                st.caption(f"Vehículo: {detalles}")
+
+    registro_activo = obtener_registro_activo_por_vehiculo(vehiculo['id'])
+    accion = "SALIDA" if registro_activo else "ENTRADA"
+
+    st.markdown(f"### 📸 Toma foto de evidencia — {accion}")
+    foto_evidencia = st.camera_input(
+        "📸 Foto del vehículo (obligatoria)",
+        key=f"cam_evidencia_qr_{vehiculo['id']}_{accion}"
+    )
+
+    st.markdown(f"### ✅ Confirmar {accion}")
+
+    if registro_activo:
+        try:
+            horas_dentro = (datetime.now() - registro_activo['hora_entrada']).total_seconds() / 3600
+        except Exception:
+            horas_dentro = 0
+
+        if horas_dentro >= 12:
+            st.error(f"🚨 Este vehículo lleva **{horas_dentro:.1f}h** dentro. Verifica antes de registrar salida.")
+        elif horas_dentro >= 8:
+            st.warning(f"⚠️ Este vehículo lleva **{horas_dentro:.1f}h** dentro.")
+
+        st.info(f"🟢 Está **DENTRO** desde {registro_activo['hora_entrada']}. Se registrará **SALIDA**.")
+
+        col_a, col_b = st.columns(2)
+        with col_a:
+            if st.button("🚪 Registrar SALIDA", type="primary", use_container_width=True, key="btn_salida_qr"):
+                if not foto_evidencia:
+                    st.error("❌ Debes tomar la foto de evidencia.")
+                else:
+                    with st.spinner("💾 Registrando salida..."):
+                        registrar_salida(
+                            registro_activo['id'], vehiculo['tipo'], user['id'],
+                            imagen_a_base64(foto_evidencia.getvalue())
+                        )
+                        registrar_log(
+                            user['id'], "REGISTRAR_SALIDA",
+                            f"Salida de {vehiculo['placas']} ({vehiculo['nombre_completo']}) por QR",
+                            "Super_Registros", registro_activo['id']
+                        )
+                    st.session_state["qr_escaneado_actual"] = None
+                    st.session_state["qr_processor_ref"] = None
+                    set_flash("success", f"✅ Salida registrada para {vehiculo['placas']}.")
+                    st.rerun()
+        with col_b:
+            if st.button("❌ Cancelar", use_container_width=True, key="btn_cancel_qr_salida"):
+                st.session_state["qr_escaneado_actual"] = None
+                st.rerun()
+    else:
+        st.info("🔵 **NO** está dentro. Se registrará **ENTRADA**.")
+
+        col_a, col_b = st.columns(2)
+        with col_a:
+            if st.button("🚗 Registrar ENTRADA", type="primary", use_container_width=True, key="btn_entrada_qr"):
+                if not foto_evidencia:
+                    st.error("❌ Debes tomar la foto de evidencia.")
+                else:
+                    with st.spinner("💾 Registrando entrada..."):
+                        registrar_entrada(
+                            vehiculo['id_usuario'], vehiculo['id'], vehiculo['tipo'],
+                            user['id'], imagen_a_base64(foto_evidencia.getvalue())
+                        )
+                        registrar_log(
+                            user['id'], "REGISTRAR_ENTRADA",
+                            f"Entrada de {vehiculo['placas']} ({vehiculo['nombre_completo']}) por QR",
+                            "Super_Registros"
+                        )
+                    st.session_state["qr_escaneado_actual"] = None
+                    st.session_state["qr_processor_ref"] = None
+                    set_flash("success", f"✅ Entrada registrada para {vehiculo['placas']}.")
+                    st.rerun()
+        with col_b:
+            if st.button("❌ Cancelar", use_container_width=True, key="btn_cancel_qr_entrada"):
+                st.session_state["qr_escaneado_actual"] = None
+                st.rerun()
+
+
+def _seccion_escaner_qr(user):
+    if st.session_state.get("qr_escaneado_actual"):
+        _mostrar_datos_qr_escaneado(user, st.session_state["qr_escaneado_actual"])
+        return
+
+    st.markdown("### 📷 Escáner automático de QR")
+    st.caption("Apunta la cámara al código QR del alumno. Se procesará automáticamente. 🔍")
+
+    if WEBRTC_DISPONIBLE:
+        col_status, col_hint = st.columns([1, 3])
+        with col_status:
+            st.markdown("🟢 **Cámara activa**")
+        with col_hint:
+            st.caption("💡 Buena iluminación y el QR completo en el recuadro = mejor detección")
+
+        try:
+            ctx = webrtc_streamer(
+                key="qr_scanner_caseta",
+                mode=WebRtcMode.SENDRECV,
+                video_processor_factory=QRScannerProcessor,
+                media_stream_constraints={
+                    "video": {
+                        "facingMode": "environment",
+                        "width": {"ideal": 640},
+                        "height": {"ideal": 480},
+                    },
+                    "audio": False,
+                },
+                async_processing=True,
+                rtc_configuration={
+                    "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
+                },
+            )
+
+            if ctx.video_processor:
+                st.session_state["qr_processor_ref"] = ctx.video_processor
+
+            _poll_qr_scanner()
+
+        except Exception as e:
+            st.warning(f"⚠️ No se pudo iniciar la cámara automática: {e}")
+            st.info("Usa la entrada manual de placas abajo.")
+    else:
+        st.warning("⚠️ El escáner automático no está disponible en este entorno.")
+        st.caption("Instala `streamlit-webrtc` y `av`, o usa la entrada manual de placas.")
+
+    st.markdown("---")
+    with st.expander("⌨️ Ingresar placas manualmente", expanded=not WEBRTC_DISPONIBLE):
+        st.caption("Úsalo si la cámara no funciona o si el QR no se puede leer.")
+        col_in, col_btn = st.columns([3, 1])
+        with col_in:
+            placas_manual = st.text_input(
+                "Placas", key="placas_manual_qr",
+                placeholder="Ej. ABC-1234", label_visibility="collapsed"
+            ).upper().strip()
+        with col_btn:
+            if st.button("🔍 Buscar", use_container_width=True, key="btn_buscar_manual"):
+                if placas_manual:
+                    st.session_state["qr_escaneado_actual"] = json.dumps({"placas": placas_manual})
+                    st.rerun()
+                else:
+                    st.error("Ingresa las placas.")
+
+
+# ============================================================
 # HELPERS: EXCEL / PDF
 # ============================================================
 def exportar_excel_profesional(df, titulo_reporte, subtitulo_extra=""):
@@ -203,7 +482,6 @@ def exportar_excel_profesional(df, titulo_reporte, subtitulo_extra=""):
 
 
 def generar_pdf_reporte(df, titulo, subtitulo=""):
-    """PDF genérico con tabla a partir de un DataFrame."""
     class PDF(FPDF):
         def header(self):
             self.set_fill_color(123, 27, 46)
@@ -422,9 +700,6 @@ def obtener_badge_alerta(horas):
         return f'<span class="alert-badge ok">✓ {horas:.1f}h</span>'
 
 
-# ============================================================
-# VALIDADORES
-# ============================================================
 def validar_nombre(nombre):
     if not nombre or not nombre.strip():
         return False, "El nombre es obligatorio."
@@ -526,9 +801,6 @@ def limpiar_campos(keys):
             del st.session_state[k]
 
 
-# ============================================================
-# GRÁFICOS
-# ============================================================
 def grafico_dona_ocupacion(autos_ocupados, autos_libres, motos_ocupados, motos_libres):
     labels = ["🚗 Autos", "🏍️ Motos", "Libres"]
     values = [autos_ocupados, motos_ocupados, autos_libres + motos_libres]
@@ -605,9 +877,6 @@ def grafico_barras_carreras(df_carreras):
     return fig
 
 
-# ============================================================
-# PDF DEL QR
-# ============================================================
 def generar_pdf_qr(user, vehiculo, qr_bytes):
     class PDF(FPDF):
         def header(self):
@@ -728,8 +997,11 @@ if 'qr_generado' not in st.session_state:
     st.session_state.qr_generado = None
 if 'flash' not in st.session_state:
     st.session_state.flash = None
+if 'qr_escaneado_actual' not in st.session_state:
+    st.session_state.qr_escaneado_actual = None
+if 'qr_processor_ref' not in st.session_state:
+    st.session_state.qr_processor_ref = None
 
-# Crear tabla de mensajes al iniciar
 if 'tabla_mensajes_ok' not in st.session_state:
     try:
         crear_tabla_mensajes()
@@ -785,9 +1057,6 @@ def mostrar_marca_cudy():
     """
 
 
-# ============================================================
-# CALLBACKS
-# ============================================================
 def cb_mostrar_confirm(key):
     st.session_state[key] = True
 
@@ -845,12 +1114,11 @@ def cerrar_sesion():
     st.session_state.usuario = None
     st.session_state.qr_generado = None
     st.session_state.flash = None
+    st.session_state.qr_escaneado_actual = None
+    st.session_state.qr_processor_ref = None
     st.rerun()
 
 
-# ============================================================
-# MI CUENTA
-# ============================================================
 def mostrar_mi_cuenta(user):
     with st.expander("🔧 Mi cuenta — Contraseña y contacto"):
         st.markdown("#### 📱 Actualizar mi teléfono")
@@ -933,9 +1201,6 @@ def mostrar_mi_cuenta(user):
                 st.error(f"❌ {msg}")
 
 
-# ============================================================
-# LOGIN
-# ============================================================
 def pantalla_login():
     mostrar_branding_login()
     st.markdown('<p class="titulo-principal">CUYPARK</p>', unsafe_allow_html=True)
@@ -992,9 +1257,6 @@ def pantalla_login():
     st.caption("🔒 Las cuentas son creadas por el administrador.")
 
 
-# ============================================================
-# FRAGMENTS (auto-refresh)
-# ============================================================
 @st.fragment(run_every="15s")
 def _contadores_alumno():
     espacios = obtener_espacios()
@@ -1212,9 +1474,6 @@ def _dashboard_datos_vivo():
                     st.markdown(obtener_badge_alerta(horas), unsafe_allow_html=True)
 
 
-# ============================================================
-# LISTA VEHÍCULOS DENTRO (caseta)
-# ============================================================
 def _render_lista_vehiculos_dentro(user):
     buscar = st.text_input("🔍 Buscar vehículo (placas, nombre o matrícula)",
                            key="buscar_dentro_caseta",
@@ -1310,7 +1569,6 @@ def panel_alumno():
     mostrar_flash()
     notificar_entrada_reciente(user)
 
-    # Mensajes sin leer
     no_leidos = contar_mensajes_no_leidos(user['id'])
     if no_leidos > 0:
         st.info(f"💬 Tienes **{no_leidos}** mensaje(s) sin leer. Revisa la sección Mensajes abajo.")
@@ -1325,7 +1583,6 @@ def panel_alumno():
 
     mostrar_mi_cuenta(user)
 
-    # --- Mensajes ---
     titulo_msj = f"💬 Mensajes ({no_leidos} sin leer)" if no_leidos > 0 else "💬 Mensajes"
     with st.expander(titulo_msj):
         mensajes = obtener_mensajes_para_usuario(user['id'])
@@ -1347,7 +1604,7 @@ def panel_alumno():
                                 marcar_mensaje_leido(m['id'])
                                 st.rerun()
 
-    st.markdown("### 🅿️ Lugares disponibles")
+    st.markdown("Lugares disponibles")
     st.caption("🟢 Actualizándose en tiempo real (cada 15s)")
     _contadores_alumno()
     st.markdown("---")
@@ -1419,7 +1676,6 @@ def panel_alumno():
                             st.button("❌ Cancelar", key=f"no_del_veh_{v['id']}", use_container_width=True,
                                       on_click=cb_ocultar_confirm, args=(f"confirmar_elim_veh_{v['id']}",))
 
-    # --- Historial con lazy loading ---
     with st.expander("📜 Mi historial de visitas"):
         total_visitas, visitas_mes = contar_visitas_usuario(user['id'])
         historial = obtener_historial_usuario(user['id'], limite=100)
@@ -1493,7 +1749,6 @@ def panel_alumno():
                     st.session_state[key_lazy] += 10
                     st.rerun()
 
-    # --- Nuevo vehículo ---
     with st.expander("➕ Registrar nuevo vehículo"):
         st.markdown("**Tipo de vehículo**")
         tipo = st.selectbox("Tipo de vehículo", ["Auto", "Moto"], key="vh_tipo", label_visibility="collapsed")
@@ -1528,7 +1783,6 @@ def panel_alumno():
             except Exception as e:
                 st.error(f"Error al registrar: {e}")
 
-    # --- QR ---
     if st.session_state.qr_generado:
         qr_info = st.session_state.qr_generado
         st.markdown("---")
@@ -1574,73 +1828,7 @@ def panel_trabajador():
                        horizontal=True, label_visibility="collapsed")
 
     if seccion == "📷 Escanear QR":
-        st.markdown("### 1️⃣ Escanea el QR o ingresa las placas")
-        foto_qr = st.camera_input("📸 Escanear QR", key="cam_qr")
-        placas_manual = st.text_input("⌨️ O escribe las placas manualmente", key="placas_manual").upper().strip()
-
-        placas_detectadas = None
-        if foto_qr is not None:
-            try:
-                qr_data = decodificar_qr_de_imagen(foto_qr.getvalue())
-                if qr_data:
-                    data = json.loads(qr_data)
-                    placas_detectadas = data.get("placas", "").upper()
-                    st.success(f"✅ QR leído: **{placas_detectadas}**")
-                else:
-                    st.warning("⚠️ No se pudo leer el QR.")
-            except Exception as e:
-                st.error(f"Error al leer QR: {e}")
-
-        if placas_manual:
-            placas_detectadas = placas_manual
-
-        if placas_detectadas:
-            with st.spinner("🔎 Buscando vehículo..."):
-                vehiculo = obtener_vehiculo_por_placas(placas_detectadas)
-            if not vehiculo:
-                st.error(f"❌ No existe vehículo con placas **{placas_detectadas}**.")
-            else:
-                st.markdown("### 2️⃣ Vehículo encontrado")
-                with st.container(border=True):
-                    icono = "🚗" if vehiculo['tipo'] == 'Auto' else "🏍️"
-                    st.markdown(f"**{icono} {vehiculo['tipo']} — {vehiculo['placas']}**")
-                    st.caption(f"Dueño: {vehiculo['nombre_completo']}")
-                    st.caption(f"Matrícula: {vehiculo['matricula'] or 'N/A'}")
-                    st.caption(f"Carrera: {vehiculo['carrera'] or 'N/A'}")
-
-                registro_activo = obtener_registro_activo_por_vehiculo(vehiculo['id'])
-                st.markdown("### 3️⃣ Toma evidencia")
-                foto_evidencia = st.camera_input("📸 Evidencia del vehículo", key="cam_evidencia")
-
-                st.markdown("### 4️⃣ Confirma")
-                if registro_activo:
-                    st.info(f"🟢 Está **DENTRO** desde {registro_activo['hora_entrada']}. Se registrará **SALIDA**.")
-                    if st.button("🚪 Registrar SALIDA", type="primary", use_container_width=True):
-                        if not foto_evidencia:
-                            st.error("Debes tomar una foto de evidencia.")
-                        else:
-                            with st.spinner("💾 Registrando salida..."):
-                                registrar_salida(registro_activo['id'], vehiculo['tipo'], user['id'],
-                                                 imagen_a_base64(foto_evidencia.getvalue()))
-                                registrar_log(user['id'], "REGISTRAR_SALIDA",
-                                              f"Salida de {vehiculo['placas']} ({vehiculo['nombre_completo']})",
-                                              "Super_Registros", registro_activo['id'])
-                            set_flash("success", f"✅ Salida registrada para {vehiculo['placas']}.")
-                            st.rerun()
-                else:
-                    st.info(f"🔵 NO está dentro. Se registrará **ENTRADA**.")
-                    if st.button("🚗 Registrar ENTRADA", type="primary", use_container_width=True):
-                        if not foto_evidencia:
-                            st.error("Debes tomar una foto de evidencia.")
-                        else:
-                            with st.spinner("💾 Registrando entrada..."):
-                                registrar_entrada(vehiculo['id_usuario'], vehiculo['id'], vehiculo['tipo'],
-                                                  user['id'], imagen_a_base64(foto_evidencia.getvalue()))
-                                registrar_log(user['id'], "REGISTRAR_ENTRADA",
-                                              f"Entrada de {vehiculo['placas']} ({vehiculo['nombre_completo']})",
-                                              "Super_Registros")
-                            set_flash("success", f"✅ Entrada registrada para {vehiculo['placas']}.")
-                            st.rerun()
+        _seccion_escaner_qr(user)
     else:
         st.markdown("### 🚘 Vehículos dentro")
         auto_refresh = st.toggle("🔄 Auto-actualizar cada 10 segundos", value=False,
@@ -1676,11 +1864,9 @@ def panel_admin():
         horizontal=True, label_visibility="collapsed"
     )
 
-    # -------- DASHBOARD --------
     if seccion == "📊 Dashboard":
         _dashboard_datos_vivo()
 
-    # -------- USUARIOS --------
     elif seccion == "👥 Usuarios":
         st.markdown("### 👥 Gestión de Usuarios")
         sub = st.radio("Acción:", ["🎓 Crear Alumno", "👷 Crear Trabajador", "👑 Crear Admin", "📋 Ver Todos"],
@@ -1819,7 +2005,6 @@ def panel_admin():
                 inactivos_count = len(usuarios) - activos_count
                 st.write(f"**Total: {len(usuarios)}** ({activos_count} activos, {inactivos_count} inactivos)")
 
-                # --- Comparativa ---
                 with st.expander("📊 Comparativa activos vs inactivos por rol"):
                     datos = contar_usuarios_por_estado()
                     df_comp = pd.DataFrame([
@@ -2048,7 +2233,6 @@ def panel_admin():
                                 st.rerun()
                         st.markdown('</div>', unsafe_allow_html=True)
 
-    # -------- REGISTROS (con paginación + PDF) --------
     elif seccion == "📋 Registros":
         st.markdown("### 📋 Registros de entradas/salidas")
         fecha_desde, fecha_hasta = selector_rango_fechas("registros")
@@ -2137,7 +2321,6 @@ def panel_admin():
             st.markdown("---")
             render_paginacion_inferior("reg", pagina, total, por_pagina, "reg_pagina")
 
-    # -------- MÉTRICAS --------
     elif seccion == "📈 Métricas":
         st.markdown("### 📈 Métricas y patrones de uso")
         with st.spinner("📈 Calculando métricas..."):
@@ -2177,7 +2360,6 @@ def panel_admin():
             por_tipo = df.groupby('tipo').size().reset_index(name='cantidad')
             st.dataframe(por_tipo, use_container_width=True, hide_index=True)
 
-    # -------- AUDITORÍA (con paginación + PDF) --------
     elif seccion == "🔍 Auditoría":
         st.markdown("### 🔍 Registro de Auditoría")
         st.caption("Historial de todas las acciones importantes en el sistema.")
@@ -2284,7 +2466,6 @@ def panel_admin():
             st.markdown("---")
             render_paginacion_inferior("aud", pagina, total, por_pagina, "aud_pagina")
 
-    # -------- MENSAJES --------
     elif seccion == "💬 Mensajes":
         st.markdown("### 💬 Mensajes")
         tab1, tab2, tab3 = st.tabs(["📥 Recibidos", "📤 Enviados", "✉️ Nuevo mensaje"])
@@ -2381,7 +2562,6 @@ def panel_admin():
                 set_flash("success", "✅ Mensaje enviado.")
                 st.rerun()
 
-    # -------- VEHÍCULOS --------
     elif seccion == "🚗 Vehículos":
         st.markdown("### 🚗 Vehículos registrados")
         st.caption("Busca un vehículo para ver su historial detallado.")
@@ -2472,7 +2652,6 @@ def panel_admin():
                                 st.session_state[f"ver_hist_veh_{v['id']}"] = False
                                 st.rerun()
 
-    # -------- MI CUENTA --------
     elif seccion == "🔧 Mi Cuenta":
         st.markdown("### 🔧 Mi Cuenta")
         st.caption("Gestiona tu propia cuenta desde aquí.")
