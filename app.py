@@ -70,6 +70,10 @@ st.markdown("""
         0% { background-position: -200% center; }
         100% { background-position: 200% center; }
     }
+    @keyframes pulseAlert {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.65; }
+    }
 
     .stApp { background: radial-gradient(ellipse at top, #1a0a0f 0%, #0d0407 40%, #050203 100%) !important; }
     header[data-testid="stHeader"] { background: rgba(0, 0, 0, 0) !important; }
@@ -252,6 +256,43 @@ st.markdown("""
         margin: 8px 0;
     }
 
+    /* BADGES DE ALERTA */
+    .alert-badge {
+        display: inline-block;
+        padding: 3px 10px;
+        border-radius: 12px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        animation: pulseAlert 2s ease-in-out infinite;
+    }
+    .alert-badge.critico {
+        background: rgba(215, 25, 45, 0.2);
+        color: #ff4444;
+        border: 1px solid #ff4444;
+        box-shadow: 0 0 10px rgba(215, 25, 45, 0.5);
+    }
+    .alert-badge.advertencia {
+        background: rgba(255, 170, 0, 0.2);
+        color: #ffaa00;
+        border: 1px solid #ffaa00;
+        box-shadow: 0 0 10px rgba(255, 170, 0, 0.4);
+    }
+    .alert-badge.ok {
+        background: rgba(0, 255, 136, 0.15);
+        color: #00ff88;
+        border: 1px solid #00ff88;
+    }
+    .alert-card {
+        background: linear-gradient(135deg, #2a0a0f 0%, #1a0505 100%);
+        border: 2px solid #ff4444;
+        border-radius: 12px;
+        padding: 12px 14px;
+        margin-bottom: 10px;
+        animation: fadeInScale 0.5s ease-out;
+        box-shadow: 0 0 15px rgba(215, 25, 45, 0.3);
+    }
+
     @media (max-width: 768px) {
         .stButton > button { min-height: 48px !important; font-size: 0.95rem !important; padding: 10px 14px !important; border-radius: 12px !important; }
         .stTextInput > div > div > input, .stSelectbox > div > div > div { min-height: 44px !important; font-size: 16px !important; }
@@ -426,6 +467,25 @@ def formatear_tiempo_dentro(hora_entrada):
             return f"desde hace {horas}h {mins_resto}min"
     except Exception:
         return ""
+
+
+def calcular_horas_dentro(hora_entrada):
+    """Devuelve las horas (float) que lleva un vehículo dentro."""
+    try:
+        delta = datetime.now() - hora_entrada
+        return delta.total_seconds() / 3600
+    except Exception:
+        return 0
+
+
+def obtener_badge_alerta(horas):
+    """Devuelve el HTML del badge según las horas dentro."""
+    if horas >= 12:
+        return f'<span class="alert-badge critico">🚨 {horas:.1f}h DENTRO</span>'
+    elif horas >= 8:
+        return f'<span class="alert-badge advertencia">⚠️ {horas:.1f}h DENTRO</span>'
+    else:
+        return f'<span class="alert-badge ok">✓ {horas:.1f}h</span>'
 
 
 def validar_nombre(nombre):
@@ -1212,16 +1272,63 @@ def _dashboard_datos_vivo():
     if not dentro_list:
         st.info("No hay vehículos dentro.")
     else:
+        criticos = [v for v in dentro_list if calcular_horas_dentro(v['hora_entrada']) >= 12]
+        advertencias = [v for v in dentro_list if 8 <= calcular_horas_dentro(v['hora_entrada']) < 12]
+
+        if criticos:
+            st.markdown(f"""
+                <div class="alert-card">
+                    <div style="color: #ff4444; font-weight: 800; font-size: 1rem;">
+                        🚨 {len(criticos)} vehículo(s) con MÁS DE 12 HORAS dentro
+                    </div>
+                    <div style="color: #E8DFD0; font-size: 0.85rem; margin-top: 6px;">
+                        Estos vehículos podrían estar abandonados o tener una incidencia. Considera revisarlos.
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
+
+            for v in criticos:
+                horas = calcular_horas_dentro(v['hora_entrada'])
+                icono = "🚗" if v['tipo'] == 'Auto' else "🏍️"
+                with st.container(border=True):
+                    col_a, col_b = st.columns([3, 2])
+                    with col_a:
+                        st.markdown(f"**{icono} {v['placas']}** — {v['nombre_completo']}")
+                        st.caption(f"Matrícula: {v['matricula'] or 'N/A'} | Carrera: {v['carrera'] or 'N/A'}")
+                        st.caption(f"Entrada: {v['hora_entrada']}")
+                    with col_b:
+                        st.markdown(obtener_badge_alerta(horas), unsafe_allow_html=True)
+
+            st.markdown("---")
+
+        if advertencias:
+            with st.expander(f"⚠️ {len(advertencias)} vehículo(s) con 8-12 horas dentro"):
+                for v in advertencias:
+                    horas = calcular_horas_dentro(v['hora_entrada'])
+                    icono = "🚗" if v['tipo'] == 'Auto' else "🏍️"
+                    with st.container(border=True):
+                        col_a, col_b = st.columns([3, 2])
+                        with col_a:
+                            st.markdown(f"**{icono} {v['placas']}** — {v['nombre_completo']}")
+                            st.caption(f"Entrada: {v['hora_entrada']}")
+                        with col_b:
+                            st.markdown(obtener_badge_alerta(horas), unsafe_allow_html=True)
+
+        st.markdown("#### Todos los vehículos dentro")
         st.caption(f"**Total: {len(dentro_list)}** vehículo(s)")
         for v in dentro_list:
+            horas = calcular_horas_dentro(v['hora_entrada'])
             icono = "🚗" if v['tipo'] == 'Auto' else "🏍️"
             with st.container(border=True):
-                st.markdown(f"**{icono} {v['placas']}** — {v['nombre_completo']}")
-                st.caption(f"Matrícula: {v['matricula'] or 'N/A'} | Entrada: {v['hora_entrada']}")
+                col_a, col_b = st.columns([3, 2])
+                with col_a:
+                    st.markdown(f"**{icono} {v['placas']}** — {v['nombre_completo']}")
+                    st.caption(f"Matrícula: {v['matricula'] or 'N/A'} | Entrada: {v['hora_entrada']}")
+                with col_b:
+                    st.markdown(obtener_badge_alerta(horas), unsafe_allow_html=True)
 
 
 def _render_lista_vehiculos_dentro(user):
-    # --- BUSCADOR ---
     buscar = st.text_input(
         "🔍 Buscar vehículo (placas, nombre o matrícula)",
         key="buscar_dentro_caseta",
@@ -1234,7 +1341,6 @@ def _render_lista_vehiculos_dentro(user):
         st.info("No hay vehículos dentro.")
         return
 
-    # --- FILTRAR ---
     if buscar and buscar.strip():
         termino = buscar.strip().lower()
         dentro_filtrado = [
@@ -1250,19 +1356,38 @@ def _render_lista_vehiculos_dentro(user):
         dentro = dentro_filtrado
 
     else:
+        criticos = sum(1 for v in dentro if calcular_horas_dentro(v['hora_entrada']) >= 12)
+        advertencias = sum(1 for v in dentro if 8 <= calcular_horas_dentro(v['hora_entrada']) < 12)
+
+        if criticos > 0 or advertencias > 0:
+            col_a, col_b = st.columns(2)
+            with col_a:
+                if criticos > 0:
+                    st.markdown(f'<div class="alert-badge critico">🚨 {criticos} con +12h dentro</div>', unsafe_allow_html=True)
+            with col_b:
+                if advertencias > 0:
+                    st.markdown(f'<div class="alert-badge advertencia">⚠️ {advertencias} con +8h dentro</div>', unsafe_allow_html=True)
+
         st.write(f"**Total: {len(dentro)}**")
 
     if not dentro:
         st.info("No hay vehículos que coincidan con la búsqueda.")
         return
 
-    # --- LISTA ---
     for v in dentro:
+        horas = calcular_horas_dentro(v['hora_entrada'])
         with st.container(border=True):
             icono = "🚗" if v['tipo'] == 'Auto' else "🏍️"
-            st.markdown(f"**{icono} {v['placas']}** — {v['nombre_completo']}")
-            st.caption(f"Matrícula: {v['matricula'] or 'N/A'}")
-            st.caption(f"Entrada: {v['hora_entrada']}")
+            col_info, col_badge = st.columns([3, 2])
+            with col_info:
+                st.markdown(f"**{icono} {v['placas']}** — {v['nombre_completo']}")
+                st.caption(f"Matrícula: {v['matricula'] or 'N/A'}")
+                st.caption(f"Entrada: {v['hora_entrada']}")
+            with col_badge:
+                st.markdown(obtener_badge_alerta(horas), unsafe_allow_html=True)
+
+            if horas >= 12:
+                st.warning(f"⚠️ **Atención:** Este vehículo lleva **{horas:.1f} horas** estacionado.")
 
             if st.button("🚪 Registrar Salida", key=f"sal_{v['id_registro']}", use_container_width=True):
                 st.session_state[f"salida_rapida_{v['id_registro']}"] = True
