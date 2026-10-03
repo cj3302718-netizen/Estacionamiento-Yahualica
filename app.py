@@ -41,6 +41,7 @@ from db import (
     marcar_mensaje_leido, obtener_mensajes_enviados, eliminar_mensaje,
     obtener_vehiculos_alerta,
     crear_tabla_mensajes, crear_indices,
+    listar_todas_las_placas,
 )
 
 try:
@@ -189,6 +190,7 @@ if WEBRTC_DISPONIBLE:
 
 @st.fragment(run_every="1s")
 def _poll_qr_scanner():
+    """Revisa si el procesador detectó un QR y dispara la transición automática."""
     processor = st.session_state.get("qr_processor_ref")
     if processor is None:
         return
@@ -202,6 +204,7 @@ def _poll_qr_scanner():
 
 
 def _mostrar_datos_qr_escaneado(user, qr_raw):
+    """Muestra los datos del vehículo detectado y permite registrar entrada/salida."""
     try:
         if isinstance(qr_raw, str) and qr_raw.strip().startswith("{"):
             data = json.loads(qr_raw)
@@ -216,22 +219,36 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
         st.error("❌ QR inválido. No se pudieron extraer las placas.")
         if st.button("🔄 Volver a escanear", use_container_width=True, key="qr_reset_1"):
             st.session_state["qr_escaneado_actual"] = None
+            st.session_state["qr_processor_ref"] = None
             st.rerun()
         return
-
-    st.success("✅ **QR detectado correctamente**")
 
     with st.spinner("🔎 Buscando vehículo..."):
         vehiculo = obtener_vehiculo_por_placas(placas)
 
+    # --- Si NO existe el vehículo ---
     if not vehiculo:
         st.error(f"❌ No existe ningún vehículo registrado con las placas **{placas}**.")
         st.caption("Verifica que el alumno haya registrado su vehículo en la app.")
+
+        with st.expander("🔍 Ver vehículos registrados en el sistema (debug)"):
+            placas_db = listar_todas_las_placas()
+            if not placas_db:
+                st.warning("No hay ningún vehículo registrado todavía.")
+            else:
+                st.caption(f"**{len(placas_db)} vehículo(s) registrado(s):**")
+                for p in placas_db:
+                    icono = "🚗" if p['tipo'] == 'Auto' else "🏍️"
+                    st.markdown(f"- {icono} **{p['placas']}** — {p['nombre_completo']}")
+
         if st.button("🔄 Volver a escanear", use_container_width=True, key="qr_reset_2"):
             st.session_state["qr_escaneado_actual"] = None
+            st.session_state["qr_processor_ref"] = None
             st.rerun()
         return
 
+    # --- Datos del alumno encontrado ---
+    st.success("✅ **QR detectado correctamente**")
     st.markdown("### 👤 Datos del alumno")
     icono = "🚗" if vehiculo['tipo'] == 'Auto' else "🏍️"
 
@@ -316,6 +333,7 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
         with col_b:
             if st.button("❌ Cancelar", use_container_width=True, key="btn_cancel_qr_salida"):
                 st.session_state["qr_escaneado_actual"] = None
+                st.session_state["qr_processor_ref"] = None
                 st.rerun()
     else:
         st.info("🔵 **NO** está dentro. Se registrará **ENTRADA**.")
@@ -343,16 +361,19 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
         with col_b:
             if st.button("❌ Cancelar", use_container_width=True, key="btn_cancel_qr_entrada"):
                 st.session_state["qr_escaneado_actual"] = None
+                st.session_state["qr_processor_ref"] = None
                 st.rerun()
 
 
 def _seccion_escaner_qr(user):
+    """Sección de escaneo QR automático en vivo (con fallback manual)."""
+
     if st.session_state.get("qr_escaneado_actual"):
         _mostrar_datos_qr_escaneado(user, st.session_state["qr_escaneado_actual"])
         return
 
     st.markdown("### 📷 Escáner automático de QR")
-    st.caption("Apunta la cámara al código QR del alumno. Se procesará automáticamente. 🔍")
+    st.caption("Apunta la cámara al código QR del alumno. La detección es automática. 🔍")
 
     if WEBRTC_DISPONIBLE:
         col_status, col_hint = st.columns([1, 3])
@@ -1604,7 +1625,7 @@ def panel_alumno():
                                 marcar_mensaje_leido(m['id'])
                                 st.rerun()
 
-    st.markdown("Lugares disponibles")
+    st.markdown("### 🅿️ Lugares disponibles")
     st.caption("🟢 Actualizándose en tiempo real (cada 15s)")
     _contadores_alumno()
     st.markdown("---")

@@ -9,3 +9,5 @@ pandas
 openpyxl
 fpdf2
 plotly
+streamlit-webrtc
+av

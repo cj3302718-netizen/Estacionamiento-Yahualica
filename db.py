@@ -50,7 +50,6 @@ def ejecutar_query(query, params=(), fetch=False):
 
 # --- CACHÉ ---
 def limpiar_cache():
-    """Invalida el caché de lectura. Llamar tras escrituras."""
     try:
         st.cache_data.clear()
     except Exception:
@@ -402,8 +401,13 @@ def obtener_vehiculos_de_usuario(id_usuario):
 
 
 def placas_existen(placas):
-    res = ejecutar_query("SELECT id FROM Super_Vehiculos WHERE placas = ?",
-                         (placas,), fetch=True)
+    if not placas:
+        return False
+    limpio = str(placas).upper().replace("-", "").replace(" ", "").strip()
+    res = ejecutar_query(
+        "SELECT id FROM Super_Vehiculos WHERE REPLACE(REPLACE(UPPER(placas),'-',''),' ','') = ?",
+        (limpio,), fetch=True
+    )
     return len(res) > 0
 
 
@@ -452,6 +456,19 @@ def buscar_vehiculos_admin(buscar=None, limite=50):
            ORDER BY v.placas""",
         fetch=True
     )
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def listar_todas_las_placas(limite=200):
+    """Devuelve todas las placas registradas. Útil para debug del escáner QR."""
+    res = ejecutar_query(
+        f"""SELECT TOP {limite} v.placas, v.tipo, u.nombre_completo
+            FROM Super_Vehiculos v
+            INNER JOIN Super_Usuarios u ON v.id_usuario = u.id
+            ORDER BY v.placas""",
+        fetch=True
+    )
+    return res or []
 
 
 # --- ESPACIOS ---
@@ -593,13 +610,18 @@ def generar_qr_imagen(data_dict):
 
 # --- CASETA ---
 def obtener_vehiculo_por_placas(placas):
+    """Busca vehículo normalizando placas: ignora guiones, espacios y mayúsculas."""
+    if not placas:
+        return None
+    limpio = str(placas).upper().replace("-", "").replace(" ", "").strip()
+
     res = ejecutar_query(
         """SELECT v.*, u.usuario, u.nombre_completo, u.matricula,
                   u.id_estudiante, u.carrera, u.grupo, u.telefono
            FROM Super_Vehiculos v
            INNER JOIN Super_Usuarios u ON v.id_usuario = u.id
-           WHERE v.placas = ?""",
-        (placas,), fetch=True
+           WHERE REPLACE(REPLACE(UPPER(v.placas), '-', ''), ' ', '') = ?""",
+        (limpio,), fetch=True
     )
     return res[0] if res else None
 
@@ -810,7 +832,7 @@ def obtener_vehiculos_alerta(horas_minimas=12):
 
 
 # =========================================================
-# ÍNDICES RECOMENDADOS (ejecutar una vez)
+# ÍNDICES RECOMENDADOS
 # =========================================================
 INDICES_RECOMENDADOS = [
     ("IX_Usuarios_Usuario", "CREATE INDEX IX_Usuarios_Usuario ON Super_Usuarios(usuario)"),
