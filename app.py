@@ -33,7 +33,6 @@ from db import (
     actualizar_telefono_usuario
 )
 
-# --- LOGOS (URLs directas desde GitHub) ---
 LOGO_COMPLETO_URL = "https://raw.githubusercontent.com/cj3302718-netizen/Estacionamiento-Yahualica/main/logo_completo.png"
 LOGO_ESCUDO_URL = "https://raw.githubusercontent.com/cj3302718-netizen/Estacionamiento-Yahualica/main/logo_escudo.png"
 
@@ -43,43 +42,36 @@ st.set_page_config(
     layout="centered"
 )
 
-# --- COLORES PALETA CUY ---
 COLOR_VINO = "#7B1B2E"
 COLOR_VINO_CLARO = "#D7192D"
 COLOR_DORADO = "#C9A961"
 COLOR_CREMA = "#F5F0E8"
 COLOR_AZUL = "#0066B3"
 
-# --- ESTILOS CON ANIMACIONES ---
 st.markdown("""
 <style>
-    /* ============================================================ */
-    /* KEYFRAMES                                                     */
-    /* ============================================================ */
     @keyframes fadeInUp {
         from { opacity: 0; transform: translateY(20px); }
         to { opacity: 1; transform: translateY(0); }
     }
-
     @keyframes fadeInScale {
         from { opacity: 0; transform: scale(0.95); }
         to { opacity: 1; transform: scale(1); }
     }
-
     @keyframes slideInRight {
         from { opacity: 0; transform: translateX(100px); }
         to { opacity: 1; transform: translateX(0); }
     }
-
     @keyframes pulse {
         0%, 100% { transform: scale(1); box-shadow: 0 0 30px rgba(201, 169, 97, 0.6), 0 0 60px rgba(123, 27, 46, 0.4); }
         50% { transform: scale(1.03); box-shadow: 0 0 40px rgba(201, 169, 97, 0.8), 0 0 80px rgba(123, 27, 46, 0.6); }
     }
-
-    .stApp {
-        background: radial-gradient(ellipse at top, #1a0a0f 0%, #0d0407 40%, #050203 100%) !important;
+    @keyframes shimmer {
+        0% { background-position: -200% center; }
+        100% { background-position: 200% center; }
     }
 
+    .stApp { background: radial-gradient(ellipse at top, #1a0a0f 0%, #0d0407 40%, #050203 100%) !important; }
     header[data-testid="stHeader"] { background: rgba(0, 0, 0, 0) !important; }
     section[data-testid="stSidebar"] { background: #0f0508 !important; }
 
@@ -93,7 +85,6 @@ st.markdown("""
         margin-top: -8px; margin-bottom: 20px;
         animation: fadeInUp 1s ease-out 0.2s both;
     }
-
     .panel-header {
         background: linear-gradient(135deg, #7B1B2E 0%, #D7192D 100%);
         padding: 14px 16px; border-radius: 12px; color: #FFFFFF;
@@ -101,7 +92,6 @@ st.markdown("""
         box-shadow: 0 0 20px rgba(123, 27, 46, 0.4);
         animation: fadeInUp 0.6s ease-out;
     }
-
     .contador-card {
         background: #1a0a0f; border: 2px solid #C9A961; border-radius: 16px;
         padding: 14px; text-align: center;
@@ -116,13 +106,11 @@ st.markdown("""
     .contador-card h4 { color: #A89968; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; margin: 0; }
     .contador-card .numero { font-size: 1.6rem; font-weight: 800; color: #C9A961; margin-top: 4px; transition: color 0.3s ease; }
     .contador-card:hover .numero { color: #F5F0E8; }
-
     .edit-form {
         background: #0f0508; border: 2px dashed #C9A961; border-radius: 12px;
         padding: 16px; margin-top: 10px;
         animation: fadeInUp 0.4s ease-out;
     }
-
     .hist-item {
         background: #1a0a0f; border-left: 3px solid #C9A961; border-radius: 8px;
         padding: 12px 14px; margin-bottom: 8px;
@@ -131,7 +119,6 @@ st.markdown("""
     }
     .hist-item:hover { transform: translateX(4px); background: #240e15; }
     .hist-duracion { color: #A89968; font-size: 0.8rem; }
-
     .log-row {
         background: #1a0a0f; border-left: 3px solid #C9A961; border-radius: 8px;
         padding: 10px 14px; margin-bottom: 8px;
@@ -142,10 +129,8 @@ st.markdown("""
     .log-accion { font-weight: 700; font-size: 0.85rem; }
     .log-fecha { color: #A89968; font-size: 0.75rem; }
     .log-detalle { color: #E8DFD0; font-size: 0.85rem; margin-top: 4px; }
-
     .ocupacion-label { display: flex; justify-content: space-between; font-size: 0.88rem; margin-bottom: 4px; margin-top: 8px; }
     .ocupacion-label b { color: #C9A961; }
-
     .kpi-card {
         background: linear-gradient(135deg, #1a0a0f 0%, #2a1015 100%);
         border: 1px solid rgba(201, 169, 97, 0.35); border-radius: 14px;
@@ -164,7 +149,6 @@ st.markdown("""
     .delta-up { color: #00ff88; }
     .delta-down { color: #ff6666; }
     .delta-neutral { color: #A89968; }
-
     .bienvenida-card {
         background: linear-gradient(135deg, #1a3a1a 0%, #2a5028 100%);
         border: 2px solid #00ff88; border-radius: 16px; padding: 18px;
@@ -175,10 +159,8 @@ st.markdown("""
     .bienvenida-card h3 { color: #00ff88; margin: 0; font-size: 1.1rem; }
     .bienvenida-card p { color: #ffffff; margin: 6px 0 0 0; font-size: 0.95rem; }
     .bienvenida-card .placas { color: #00ff88; font-weight: 800; font-size: 1.3rem; }
-
     .val-ok { color: #00ff88; font-size: 0.8rem; margin-top: -8px; margin-bottom: 8px; animation: fadeInUp 0.3s ease-out; }
     .val-error { color: #ff5555; font-size: 0.8rem; margin-top: -8px; margin-bottom: 8px; animation: fadeInUp 0.3s ease-out; }
-
     .logo-medallon {
         display: inline-block;
         background: radial-gradient(circle at 30% 30%, #FFFFFF 0%, #F5F0E8 60%, #E8DFD0 100%);
@@ -188,7 +170,6 @@ st.markdown("""
         animation: pulse 3s ease-in-out infinite;
     }
     .logo-medallon img { width: 130px; height: 130px; border-radius: 50%; display: block; object-fit: cover; }
-
     .logo-barra {
         display: inline-block;
         background: radial-gradient(circle, #FFFFFF 0%, #F5F0E8 100%);
@@ -202,23 +183,19 @@ st.markdown("""
         box-shadow: 0 0 15px rgba(201, 169, 97, 0.8);
     }
     .logo-barra img { width: 40px; height: 40px; border-radius: 50%; display: block; object-fit: cover; }
-
     .brand-cudy { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 6px 0; }
     .brand-cudy .texto { text-align: right; line-height: 1.1; }
     .brand-cudy .texto .linea1 { color: #A89968; font-size: 0.65rem; letter-spacing: 2px; text-transform: uppercase; font-weight: 600; }
     .brand-cudy .texto .linea2 { color: #C9A961; font-size: 0.95rem; font-weight: 800; letter-spacing: 1.5px; }
-
     .stProgress > div > div > div > div {
         background: linear-gradient(90deg, #7B1B2E 0%, #C9A961 100%) !important;
         transition: width 0.6s ease;
     }
-
     .stButton > button { transition: all 0.25s ease !important; position: relative; overflow: hidden; }
     .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(201, 169, 97, 0.4) !important; }
     .stButton > button:active { transform: translateY(0); }
     .stButton > button[kind="primary"] { background: linear-gradient(135deg, #7B1B2E 0%, #D7192D 100%) !important; border: none !important; }
     .stButton > button[kind="primary"]:hover { background: linear-gradient(135deg, #D7192D 0%, #7B1B2E 100%) !important; }
-
     .stTextInput > div > div > input,
     .stTextArea > div > div > textarea { transition: border-color 0.3s ease, box-shadow 0.3s ease !important; }
     .stTextInput > div > div > input:focus,
@@ -226,17 +203,57 @@ st.markdown("""
         border-color: #C9A961 !important;
         box-shadow: 0 0 0 3px rgba(201, 169, 97, 0.2), 0 0 15px rgba(201, 169, 97, 0.4) !important;
     }
-
     details[data-testid="stExpander"] { transition: all 0.3s ease; }
     details[data-testid="stExpander"]:hover { border-color: rgba(201, 169, 97, 0.5) !important; }
-
     div[data-testid="stToast"] { animation: slideInRight 0.4s ease-out !important; }
-
     .stSelectbox > div > div > div { transition: border-color 0.3s ease; }
     .stSelectbox > div > div > div:hover { border-color: rgba(201, 169, 97, 0.5) !important; }
-
     .stTabs [data-baseweb="tab"] { transition: all 0.3s ease !important; }
     .stTabs [data-baseweb="tab"]:hover { color: #C9A961 !important; }
+
+    /* ============================================================ */
+    /* SPINNERS PERSONALIZADOS (paleta CUY)                          */
+    /* ============================================================ */
+    .stSpinner > div > div {
+        border-top-color: #C9A961 !important;
+        border-left-color: #C9A961 !important;
+        border-right-color: rgba(201, 169, 97, 0.25) !important;
+        border-bottom-color: rgba(201, 169, 97, 0.25) !important;
+        border-width: 3px !important;
+    }
+    .stSpinner p,
+    .stSpinner span,
+    [data-testid="stSpinner"] p {
+        color: #C9A961 !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.5px;
+        animation: fadeInUp 0.3s ease-out;
+    }
+    div[data-testid="stStatusWidget"] {
+        background: linear-gradient(135deg, #7B1B2E, #D7192D) !important;
+        border-radius: 20px !important;
+        padding: 4px 12px !important;
+        box-shadow: 0 0 12px rgba(201, 169, 97, 0.5) !important;
+        animation: fadeInUp 0.4s ease-out;
+    }
+    div[data-testid="stStatusWidget"] * {
+        color: #C9A961 !important;
+        font-weight: 700 !important;
+    }
+    div[data-testid="stDecoration"] {
+        background: linear-gradient(90deg, #7B1B2E 0%, #C9A961 50%, #D7192D 100%) !important;
+        height: 3px !important;
+        animation: shimmer 2s linear infinite;
+        background-size: 200% 100%;
+    }
+    .skeleton {
+        background: linear-gradient(90deg, #1a0a0f 25%, #2a1015 50%, #1a0a0f 75%);
+        background-size: 200% 100%;
+        animation: shimmer 1.5s infinite;
+        border-radius: 8px;
+        height: 20px;
+        margin: 8px 0;
+    }
 
     @media (max-width: 768px) {
         .stButton > button { min-height: 48px !important; font-size: 0.95rem !important; padding: 10px 14px !important; border-radius: 12px !important; }
@@ -252,9 +269,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# =========================================================
-# EXPORTAR EXCEL PROFESIONAL
-# =========================================================
 def exportar_excel_profesional(df, titulo_reporte, subtitulo_extra=""):
     wb = Workbook()
     ws = wb.active
@@ -324,9 +338,6 @@ def exportar_excel_profesional(df, titulo_reporte, subtitulo_extra=""):
     return buffer.getvalue()
 
 
-# =========================================================
-# HELPER: SELECTOR DE RANGO DE FECHAS
-# =========================================================
 def selector_rango_fechas(key_prefix):
     hoy = date.today()
     estado_key = f"{key_prefix}_rango"
@@ -374,9 +385,6 @@ def selector_rango_fechas(key_prefix):
     return fecha_desde, fecha_hasta
 
 
-# =========================================================
-# HELPER: NOTIFICACIÓN DE ENTRADA RECIENTE
-# =========================================================
 def notificar_entrada_reciente(user):
     registro = obtener_registro_activo_de_usuario(user['id'])
     if not registro:
@@ -423,9 +431,6 @@ def formatear_tiempo_dentro(hora_entrada):
         return ""
 
 
-# =========================================================
-# VALIDACIONES
-# =========================================================
 def validar_nombre(nombre):
     if not nombre or not nombre.strip():
         return False, "El nombre es obligatorio."
@@ -528,9 +533,6 @@ def limpiar_campos(keys):
             del st.session_state[k]
 
 
-# =========================================================
-# HELPERS: GRÁFICOS PLOTLY (Paleta CUY)
-# =========================================================
 def grafico_dona_ocupacion(autos_ocupados, autos_libres, motos_ocupados, motos_libres):
     labels = ["🚗 Autos", "🏍️ Motos", "Libres"]
     values = [autos_ocupados, motos_ocupados, autos_libres + motos_libres]
@@ -615,9 +617,6 @@ def grafico_barras_carreras(df_carreras):
     return fig
 
 
-# =========================================================
-# HELPER: GENERAR PDF DEL QR
-# =========================================================
 def generar_pdf_qr(user, vehiculo, qr_bytes):
     class PDF(FPDF):
         def header(self):
@@ -774,7 +773,6 @@ def generar_pdf_qr(user, vehiculo, qr_bytes):
     return bytes(pdf.output())
 
 
-# --- ESTADO DE SESIÓN ---
 if 'usuario' not in st.session_state:
     st.session_state.usuario = None
 if 'qr_generado' not in st.session_state:
@@ -797,9 +795,6 @@ def set_flash(tipo, texto):
     st.session_state.flash = (tipo, texto)
 
 
-# =========================================================
-# HELPERS: LOGO Y BRANDING
-# =========================================================
 def mostrar_branding_login():
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -841,12 +836,8 @@ def mostrar_marca_cudy():
     """
 
 
-# =========================================================
-# HELPER: MI CUENTA
-# =========================================================
 def mostrar_mi_cuenta(user):
     with st.expander("🔧 Mi cuenta — Contraseña y contacto"):
-
         st.markdown("#### 📱 Actualizar mi teléfono")
         st.caption("Solo el teléfono puede ser editado por ti. Otros datos son oficiales.")
 
@@ -894,7 +885,6 @@ def mostrar_mi_cuenta(user):
         st.caption("Actualiza tu contraseña personal. Necesitas conocer la actual.")
 
         p_actual = st.text_input("Contraseña actual", type="password", key=f"cp_act_{user['id']}")
-
         p_nueva = st.text_input("Nueva contraseña", type="password", key=f"cp_new_{user['id']}")
         p_nueva_ok = False
         if p_nueva:
@@ -930,9 +920,6 @@ def mostrar_mi_cuenta(user):
                 st.error(f"❌ {msg}")
 
 
-# =========================================================
-# CALLBACKS
-# =========================================================
 def cb_mostrar_confirm(key):
     st.session_state[key] = True
 
@@ -993,16 +980,16 @@ def cerrar_sesion():
     st.rerun()
 
 
-# =========================================================
-# LOGIN
-# =========================================================
 def pantalla_login():
     mostrar_branding_login()
     st.markdown('<p class="titulo-principal">CUYPARK</p>', unsafe_allow_html=True)
     st.markdown('<p class="subtitulo">Sistema de Estacionamiento Inteligente — CUY</p>', unsafe_allow_html=True)
     mostrar_flash()
 
-    if contar_admins() == 0:
+    with st.spinner("🔐 Verificando sistema..."):
+        hay_admin = contar_admins() > 0
+
+    if not hay_admin:
         with st.expander("🚨 Configuración inicial: Crear el primer Administrador", expanded=True):
             st.warning("No existe ningún administrador. Crea uno para poder gestionar el sistema.")
 
@@ -1036,7 +1023,8 @@ def pantalla_login():
         if not usuario or not password:
             st.error("Completa todos los campos")
         else:
-            user, error = autenticar(usuario.lower().strip(), password)
+            with st.spinner("🔓 Autenticando..."):
+                user, error = autenticar(usuario.lower().strip(), password)
             if user:
                 st.session_state.usuario = user
                 registrar_log(user['id'], "INICIO_SESION", f"@{user['usuario']} inició sesión", "Super_Usuarios", user['id'])
@@ -1051,9 +1039,6 @@ def pantalla_login():
     st.caption("🔒 Las cuentas son creadas por el administrador.")
 
 
-# =========================================================
-# FRAGMENTOS CON AUTO-REFRESH
-# =========================================================
 @st.fragment(run_every="15s")
 def _contadores_alumno():
     espacios = obtener_espacios()
@@ -1179,10 +1164,7 @@ def _dashboard_datos_vivo():
             st.markdown("#### 🍩 Distribución de ocupación")
             autos_libres = autos['capacidad_total'] - autos['ocupados']
             motos_libres = motos['capacidad_total'] - motos['ocupados']
-            fig_dona = grafico_dona_ocupacion(
-                autos['ocupados'], autos_libres,
-                motos['ocupados'], motos_libres
-            )
+            fig_dona = grafico_dona_ocupacion(autos['ocupados'], autos_libres, motos['ocupados'], motos_libres)
             st.plotly_chart(fig_dona, use_container_width=True, config={"displayModeBar": False})
 
         st.markdown("#### ⏰ Horas de mayor demanda (últimos 7 días)")
@@ -1241,9 +1223,6 @@ def _dashboard_datos_vivo():
                 st.caption(f"Matrícula: {v['matricula'] or 'N/A'} | Entrada: {v['hora_entrada']}")
 
 
-# =========================================================
-# FRAGMENTO: LISTA DE VEHÍCULOS DENTRO
-# =========================================================
 def _render_lista_vehiculos_dentro(user):
     dentro = obtener_vehiculos_dentro()
 
@@ -1272,10 +1251,11 @@ def _render_lista_vehiculos_dentro(user):
                     if not foto_sal:
                         st.error("Toma la foto de evidencia.")
                     else:
-                        registrar_salida(v['id_registro'], v['tipo'], user['id'], imagen_a_base64(foto_sal.getvalue()))
-                        registrar_log(user['id'], "REGISTRAR_SALIDA",
-                                      f"Salida de {v['placas']} ({v['nombre_completo']})",
-                                      "Super_Registros", v['id_registro'])
+                        with st.spinner("💾 Guardando salida..."):
+                            registrar_salida(v['id_registro'], v['tipo'], user['id'], imagen_a_base64(foto_sal.getvalue()))
+                            registrar_log(user['id'], "REGISTRAR_SALIDA",
+                                          f"Salida de {v['placas']} ({v['nombre_completo']})",
+                                          "Super_Registros", v['id_registro'])
                         st.session_state[f"salida_rapida_{v['id_registro']}"] = False
                         set_flash("success", f"✅ Salida registrada para {v['placas']}.")
                         st.rerun()
@@ -1295,9 +1275,6 @@ def _render_dentro_manual(user):
     _render_lista_vehiculos_dentro(user)
 
 
-# =========================================================
-# PANEL DEL ALUMNO
-# =========================================================
 def panel_alumno():
     user = st.session_state.usuario
     st.markdown(f'<div class="panel-header">🎓 Alumno — {user["nombre_completo"]}</div>', unsafe_allow_html=True)
@@ -1359,14 +1336,15 @@ def panel_alumno():
                 col1, col2 = st.columns(2)
                 with col1:
                     if st.button("🎫 QR", key=f"qr_{v['id']}", use_container_width=True):
-                        qr_data = {
-                            "id_usuario": user['id'], "usuario": user['usuario'],
-                            "nombre": user['nombre_completo'], "id_estudiante": user['id_estudiante'],
-                            "matricula": user['matricula'], "carrera": user['carrera'],
-                            "grupo": user['grupo'], "id_vehiculo": v['id'],
-                            "tipo": v['tipo'], "placas": v['placas']
-                        }
-                        st.session_state.qr_generado = {"imagen": generar_qr_imagen(qr_data), "vehiculo": v, "datos": qr_data}
+                        with st.spinner("🎫 Generando QR..."):
+                            qr_data = {
+                                "id_usuario": user['id'], "usuario": user['usuario'],
+                                "nombre": user['nombre_completo'], "id_estudiante": user['id_estudiante'],
+                                "matricula": user['matricula'], "carrera": user['carrera'],
+                                "grupo": user['grupo'], "id_vehiculo": v['id'],
+                                "tipo": v['tipo'], "placas": v['placas']
+                            }
+                            st.session_state.qr_generado = {"imagen": generar_qr_imagen(qr_data), "vehiculo": v, "datos": qr_data}
                         st.rerun()
                 with col2:
                     st.button("🗑️ Borrar", key=f"del_{v['id']}", use_container_width=True,
@@ -1487,12 +1465,13 @@ def panel_alumno():
                      disabled=not todos_ok, key="vh_btn"):
             placas_limpias = placas.replace("-", "").replace(" ", "").upper()
             try:
-                crear_vehiculo(user['id'], tipo, placas_limpias,
-                               marca.strip() if marca else None,
-                               modelo.strip() if modelo else None,
-                               color.strip() if color else None)
-                registrar_log(user['id'], "CREAR_VEHICULO",
-                              f"Vehículo {tipo} {placas_limpias} registrado", "Super_Vehiculos")
+                with st.spinner("💾 Registrando vehículo..."):
+                    crear_vehiculo(user['id'], tipo, placas_limpias,
+                                   marca.strip() if marca else None,
+                                   modelo.strip() if modelo else None,
+                                   color.strip() if color else None)
+                    registrar_log(user['id'], "CREAR_VEHICULO",
+                                  f"Vehículo {tipo} {placas_limpias} registrado", "Super_Vehiculos")
                 limpiar_campos(['vh_placas', 'vh_marca', 'vh_modelo', 'vh_color'])
                 set_flash("success", f"✅ Vehículo {placas_limpias} registrado correctamente.")
                 st.rerun()
@@ -1517,7 +1496,8 @@ def panel_alumno():
 
         with col_dl2:
             try:
-                pdf_bytes = generar_pdf_qr(user, qr_info['vehiculo'], qr_info['imagen'])
+                with st.spinner("📄 Generando PDF profesional..."):
+                    pdf_bytes = generar_pdf_qr(user, qr_info['vehiculo'], qr_info['imagen'])
                 st.download_button("📄 Descargar PDF profesional", data=pdf_bytes,
                     file_name=f"CUYPARK_{qr_info['vehiculo']['placas']}_{user['matricula'] or 'alumno'}.pdf",
                     mime="application/pdf", use_container_width=True, type="primary")
@@ -1529,9 +1509,6 @@ def panel_alumno():
             st.rerun()
 
 
-# =========================================================
-# PANEL DEL TRABAJADOR
-# =========================================================
 def panel_trabajador():
     user = st.session_state.usuario
     st.markdown(f'<div class="panel-header">👷 Caseta — {user["nombre_completo"]}</div>', unsafe_allow_html=True)
@@ -1568,7 +1545,9 @@ def panel_trabajador():
             placas_detectadas = placas_manual
 
         if placas_detectadas:
-            vehiculo = obtener_vehiculo_por_placas(placas_detectadas)
+            with st.spinner("🔎 Buscando vehículo..."):
+                vehiculo = obtener_vehiculo_por_placas(placas_detectadas)
+
             if not vehiculo:
                 st.error(f"❌ No existe vehículo con placas **{placas_detectadas}**.")
             else:
@@ -1592,10 +1571,11 @@ def panel_trabajador():
                         if not foto_evidencia:
                             st.error("Debes tomar una foto de evidencia.")
                         else:
-                            registrar_salida(registro_activo['id'], vehiculo['tipo'], user['id'], imagen_a_base64(foto_evidencia.getvalue()))
-                            registrar_log(user['id'], "REGISTRAR_SALIDA",
-                                          f"Salida de {vehiculo['placas']} ({vehiculo['nombre_completo']})",
-                                          "Super_Registros", registro_activo['id'])
+                            with st.spinner("💾 Registrando salida..."):
+                                registrar_salida(registro_activo['id'], vehiculo['tipo'], user['id'], imagen_a_base64(foto_evidencia.getvalue()))
+                                registrar_log(user['id'], "REGISTRAR_SALIDA",
+                                              f"Salida de {vehiculo['placas']} ({vehiculo['nombre_completo']})",
+                                              "Super_Registros", registro_activo['id'])
                             set_flash("success", f"✅ Salida registrada para {vehiculo['placas']}.")
                             st.rerun()
                 else:
@@ -1604,10 +1584,11 @@ def panel_trabajador():
                         if not foto_evidencia:
                             st.error("Debes tomar una foto de evidencia.")
                         else:
-                            registrar_entrada(vehiculo['id_usuario'], vehiculo['id'], vehiculo['tipo'], user['id'], imagen_a_base64(foto_evidencia.getvalue()))
-                            registrar_log(user['id'], "REGISTRAR_ENTRADA",
-                                          f"Entrada de {vehiculo['placas']} ({vehiculo['nombre_completo']})",
-                                          "Super_Registros")
+                            with st.spinner("💾 Registrando entrada..."):
+                                registrar_entrada(vehiculo['id_usuario'], vehiculo['id'], vehiculo['tipo'], user['id'], imagen_a_base64(foto_evidencia.getvalue()))
+                                registrar_log(user['id'], "REGISTRAR_ENTRADA",
+                                              f"Entrada de {vehiculo['placas']} ({vehiculo['nombre_completo']})",
+                                              "Super_Registros")
                             set_flash("success", f"✅ Entrada registrada para {vehiculo['placas']}.")
                             st.rerun()
 
@@ -1632,9 +1613,6 @@ def panel_trabajador():
             _render_dentro_manual(user)
 
 
-# =========================================================
-# PANEL DEL ADMINISTRADOR
-# =========================================================
 def panel_admin():
     user = st.session_state.usuario
     st.markdown(f'<div class="panel-header">👑 Admin — {user["nombre_completo"]}</div>', unsafe_allow_html=True)
@@ -1697,16 +1675,17 @@ def panel_admin():
             if st.button("✅ Crear Alumno", use_container_width=True, type="primary",
                          disabled=not todos_ok, key="ca_btn"):
                 try:
-                    crear_usuario(usuario=u.lower().strip(), password=p, rol='alumno',
-                        tipo_usuario='alumno', nombre_completo=nombre.strip(),
-                        matricula=mat.strip() if mat else None,
-                        carrera=car.strip() if car else None,
-                        grupo=gru.strip() if gru else None,
-                        telefono=tel.strip() if tel else None,
-                        id_estudiante=id_est.strip() if id_est else None)
-                    registrar_log(user['id'], "CREAR_ALUMNO",
-                                  f"Alumno @{u.lower().strip()} ({nombre}) creado con ID {id_est}",
-                                  "Super_Usuarios")
+                    with st.spinner("💾 Creando alumno..."):
+                        crear_usuario(usuario=u.lower().strip(), password=p, rol='alumno',
+                            tipo_usuario='alumno', nombre_completo=nombre.strip(),
+                            matricula=mat.strip() if mat else None,
+                            carrera=car.strip() if car else None,
+                            grupo=gru.strip() if gru else None,
+                            telefono=tel.strip() if tel else None,
+                            id_estudiante=id_est.strip() if id_est else None)
+                        registrar_log(user['id'], "CREAR_ALUMNO",
+                                      f"Alumno @{u.lower().strip()} ({nombre}) creado con ID {id_est}",
+                                      "Super_Usuarios")
                     limpiar_campos(['ca_u', 'ca_p', 'ca_n', 'ca_id', 'ca_mat', 'ca_car', 'ca_gru', 'ca_tel'])
                     set_flash("success", f"✅ Alumno **{nombre}** creado con ID **{id_est}**.")
                     st.rerun()
@@ -1733,11 +1712,12 @@ def panel_admin():
             if st.button("✅ Crear Trabajador", use_container_width=True, type="primary",
                          disabled=not todos_ok, key="ct_btn"):
                 try:
-                    crear_usuario(usuario=u.lower().strip(), password=p, rol='trabajador',
-                        tipo_usuario='administrativo', nombre_completo=nombre.strip(),
-                        telefono=tel.strip() if tel else None)
-                    registrar_log(user['id'], "CREAR_TRABAJADOR",
-                                  f"Trabajador @{u.lower().strip()} ({nombre}) creado", "Super_Usuarios")
+                    with st.spinner("💾 Creando trabajador..."):
+                        crear_usuario(usuario=u.lower().strip(), password=p, rol='trabajador',
+                            tipo_usuario='administrativo', nombre_completo=nombre.strip(),
+                            telefono=tel.strip() if tel else None)
+                        registrar_log(user['id'], "CREAR_TRABAJADOR",
+                                      f"Trabajador @{u.lower().strip()} ({nombre}) creado", "Super_Usuarios")
                     limpiar_campos(['ct_u', 'ct_p', 'ct_n', 'ct_tel'])
                     set_flash("success", f"✅ Trabajador **{nombre}** creado.")
                     st.rerun()
@@ -1765,11 +1745,12 @@ def panel_admin():
             if st.button("✅ Crear Administrador", use_container_width=True, type="primary",
                          disabled=not todos_ok, key="cA_btn"):
                 try:
-                    crear_usuario(usuario=u.lower().strip(), password=p, rol='admin',
-                        tipo_usuario='administrativo', nombre_completo=nombre.strip(),
-                        telefono=tel.strip() if tel else None)
-                    registrar_log(user['id'], "CREAR_ADMIN",
-                                  f"Administrador @{u.lower().strip()} ({nombre}) creado", "Super_Usuarios")
+                    with st.spinner("💾 Creando administrador..."):
+                        crear_usuario(usuario=u.lower().strip(), password=p, rol='admin',
+                            tipo_usuario='administrativo', nombre_completo=nombre.strip(),
+                            telefono=tel.strip() if tel else None)
+                        registrar_log(user['id'], "CREAR_ADMIN",
+                                      f"Administrador @{u.lower().strip()} ({nombre}) creado", "Super_Usuarios")
                     limpiar_campos(['cA_u', 'cA_p', 'cA_n', 'cA_tel'])
                     set_flash("success", f"✅ Administrador **{nombre}** creado.")
                     st.rerun()
@@ -1783,7 +1764,8 @@ def panel_admin():
             with col_f2:
                 solo_activos = st.checkbox("Solo activos", value=False)
 
-            usuarios = obtener_todos_usuarios(None if filtro == "Todos" else filtro, solo_activos=solo_activos)
+            with st.spinner("📋 Cargando usuarios..."):
+                usuarios = obtener_todos_usuarios(None if filtro == "Todos" else filtro, solo_activos=solo_activos)
 
             if not usuarios:
                 st.info("No hay usuarios que coincidan con el filtro.")
@@ -1965,22 +1947,23 @@ def panel_admin():
                             if st.button("💾 Guardar", use_container_width=True, type="primary",
                                          disabled=not todos_ok, key=f"ed_save_{u['id']}"):
                                 try:
-                                    cambios = []
-                                    if ed_nombre != u['nombre_completo']:
-                                        cambios.append(f"nombre: '{u['nombre_completo']}' → '{ed_nombre}'")
-                                    if ed_pass: cambios.append("contraseña cambiada")
-                                    actualizar_usuario(
-                                        id_usuario=u['id'], nombre_completo=ed_nombre.strip(),
-                                        telefono=ed_tel.strip() or None,
-                                        matricula=ed_mat.strip() or None,
-                                        carrera=ed_car.strip() or None,
-                                        grupo=ed_gru.strip() or None,
-                                        id_estudiante=ed_id.strip() or None,
-                                        tipo_usuario=u['tipo_usuario'],
-                                        nueva_password=ed_pass if ed_pass else None)
-                                    detalle = f"Usuario @{u['usuario']} editado"
-                                    if cambios: detalle += " — " + "; ".join(cambios)
-                                    registrar_log(user['id'], "EDITAR_USUARIO", detalle, "Super_Usuarios", u['id'])
+                                    with st.spinner("💾 Guardando cambios..."):
+                                        cambios = []
+                                        if ed_nombre != u['nombre_completo']:
+                                            cambios.append(f"nombre: '{u['nombre_completo']}' → '{ed_nombre}'")
+                                        if ed_pass: cambios.append("contraseña cambiada")
+                                        actualizar_usuario(
+                                            id_usuario=u['id'], nombre_completo=ed_nombre.strip(),
+                                            telefono=ed_tel.strip() or None,
+                                            matricula=ed_mat.strip() or None,
+                                            carrera=ed_car.strip() or None,
+                                            grupo=ed_gru.strip() or None,
+                                            id_estudiante=ed_id.strip() or None,
+                                            tipo_usuario=u['tipo_usuario'],
+                                            nueva_password=ed_pass if ed_pass else None)
+                                        detalle = f"Usuario @{u['usuario']} editado"
+                                        if cambios: detalle += " — " + "; ".join(cambios)
+                                        registrar_log(user['id'], "EDITAR_USUARIO", detalle, "Super_Usuarios", u['id'])
                                     st.session_state[f"editando_{u['id']}"] = False
                                     limpiar_campos([f"ed_n_{u['id']}", f"ed_tel_{u['id']}", f"ed_id_{u['id']}",
                                                     f"ed_mat_{u['id']}", f"ed_car_{u['id']}", f"ed_gru_{u['id']}",
@@ -2001,7 +1984,9 @@ def panel_admin():
     elif seccion == "📋 Registros":
         st.markdown("### 📋 Registros de entradas/salidas")
         fecha_desde, fecha_hasta = selector_rango_fechas("registros")
-        registros = obtener_todos_los_registros(fecha_desde=fecha_desde, fecha_hasta=fecha_hasta)
+
+        with st.spinner("📋 Cargando registros..."):
+            registros = obtener_todos_los_registros(fecha_desde=fecha_desde, fecha_hasta=fecha_hasta)
 
         if not registros:
             st.info("No hay registros en el rango seleccionado.")
@@ -2034,8 +2019,9 @@ def panel_admin():
             else:
                 rango_txt = "Período: Todo el historial"
 
-            excel_data = exportar_excel_profesional(df_export, "Reporte de Registros de Estacionamiento",
-                                                    f"{rango_txt} | Total: {len(filtrados)} registro(s)")
+            with st.spinner("📊 Generando reporte Excel..."):
+                excel_data = exportar_excel_profesional(df_export, "Reporte de Registros de Estacionamiento",
+                                                        f"{rango_txt} | Total: {len(filtrados)} registro(s)")
             st.download_button("📊 Exportar Reporte Excel", data=excel_data,
                                file_name=f"registros_{datetime.now().strftime('%Y%m%d')}.xlsx",
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -2064,7 +2050,8 @@ def panel_admin():
 
     elif seccion == "📈 Métricas":
         st.markdown("### 📈 Métricas y patrones de uso")
-        registros = obtener_todos_los_registros()
+        with st.spinner("📈 Calculando métricas..."):
+            registros = obtener_todos_los_registros()
         if not registros:
             st.info("Aún no hay datos suficientes para calcular métricas.")
         else:
@@ -2114,8 +2101,9 @@ def panel_admin():
         with col2:
             buscar = st.text_input("🔍 Buscar (usuario o detalle)").lower().strip()
 
-        logs = obtener_logs(limite=500, filtro_accion=filtro_accion, buscar=buscar if buscar else None,
-                            fecha_desde=fecha_desde, fecha_hasta=fecha_hasta)
+        with st.spinner("🔍 Cargando logs..."):
+            logs = obtener_logs(limite=500, filtro_accion=filtro_accion, buscar=buscar if buscar else None,
+                                fecha_desde=fecha_desde, fecha_hasta=fecha_hasta)
 
         if not logs:
             st.info("No hay logs que coincidan con los filtros.")
@@ -2139,8 +2127,9 @@ def panel_admin():
             else:
                 rango_txt = "Período: Todo el historial"
 
-            excel_data = exportar_excel_profesional(df_logs, "Reporte de Auditoría del Sistema",
-                                                    f"{rango_txt} | Total: {len(logs)} evento(s)")
+            with st.spinner("📊 Generando reporte Excel..."):
+                excel_data = exportar_excel_profesional(df_logs, "Reporte de Auditoría del Sistema",
+                                                        f"{rango_txt} | Total: {len(logs)} evento(s)")
             st.download_button("📊 Exportar Reporte Excel", data=excel_data,
                                file_name=f"auditoria_{datetime.now().strftime('%Y%m%d')}.xlsx",
                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -2191,9 +2180,6 @@ def panel_admin():
         mostrar_mi_cuenta(user)
 
 
-# =========================================================
-# ENRUTADOR
-# =========================================================
 if st.session_state.usuario is not None:
     rol = st.session_state.usuario['rol']
     iconos = {'alumno': '🎓', 'trabajador': '👷', 'admin': '👑'}
@@ -2201,7 +2187,7 @@ if st.session_state.usuario is not None:
     col_user, col_brand, col_salir = st.columns([3, 2, 1])
     with col_user:
         st.markdown(
-            f"<div style='padding-top: 10px; color: #C9A961;'>"
+            f"<div style='padding-top: 10px; color: #C9A961;'>">
             f"<b>{iconos.get(rol, '👤')} @{st.session_state.usuario['usuario']}</b>"
             f"</div>",
             unsafe_allow_html=True)
