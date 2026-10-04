@@ -143,6 +143,21 @@ st.markdown("""
 # ============================================================
 # ESCÁNER QR EN TIEMPO REAL
 # ============================================================
+# Modo del escáner:
+#   "navegador" -> el QR se lee dentro del navegador (carpeta qr_scanner/). No necesita TURN ni cuentas.
+#   "webrtc"    -> el video viaja al servidor (requiere servidor TURN en Streamlit Cloud).
+ESCANER_MODO = "navegador"
+
+try:
+    import streamlit.components.v1 as components
+    _QR_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "qr_scanner")
+    if os.path.isfile(os.path.join(_QR_DIR, "index.html")) and os.path.isfile(os.path.join(_QR_DIR, "jsQR.js")):
+        _qr_scanner_comp = components.declare_component("cuypark_qr_scanner", path=_QR_DIR)
+    else:
+        _qr_scanner_comp = None
+except Exception:
+    _qr_scanner_comp = None
+
 # Segundos que tiene el trabajador para apuntar la cámara al vehículo
 # después de que se lee el QR. Al terminar, la foto se toma sola.
 SEGUNDOS_ESPERA_FOTO = 5
@@ -424,6 +439,53 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
                 st.rerun()
 
 
+@st.cache_resource(ttl=3600, show_spinner=False)
+def _ice_metered():
+    """Credenciales TURN de Metered (Open Relay). Si falla, lanza error y no se guarda en caché."""
+    app_name = st.secrets["metered_app"]
+    api_key = st.secrets["metered_api_key"]
+    url = f"https://{app_name}.metered.live/api/v1/turn/credentials?apiKey={api_key}"
+    with urllib.request.urlopen(url, timeout=8) as r:
+        servers = json.loads(r.read().decode("utf-8"))
+    if not servers:
+        raise ValueError("Metered no devolvió servidores")
+    return servers
+
+
+@st.cache_resource(ttl=3600, show_spinner=False)
+def _ice_twilio():
+    """Credenciales TURN de Twilio (requiere `twilio` en requirements.txt)."""
+    from twilio.rest import Client
+    token = Client(st.secrets["twilio_account_sid"], st.secrets["twilio_auth_token"]).tokens.create()
+    return token.ice_servers
+
+
+def obtener_ice_servers():
+    """Lista de servidores STUN/TURN para la cámara en vivo.
+
+    Streamlit Cloud necesita un servidor TURN para que el video conecte.
+    Se prueba Metered, luego Twilio, y si ninguno está configurado se usa solo STUN.
+    """
+    for obtener in (_ice_metered, _ice_twilio):
+        try:
+            servers = obtener()
+            if servers:
+                return servers
+        except Exception:
+            continue
+    return [{"urls": ["stun:stun.l.google.com:19302"]}]
+
+
+def _hay_turn(servers):
+    for srv in servers:
+        urls = srv.get("urls") or srv.get("url") or []
+        if isinstance(urls, str):
+            urls = [urls]
+        if any(str(u).startswith("turn") for u in urls):
+            return True
+    return False
+
+
 def _seccion_escaner_qr(user):
     """Sección de escaneo QR automático en vivo (con fallback manual)."""
 
@@ -434,12 +496,31 @@ def _seccion_escaner_qr(user):
     st.markdown("### 📷 Escáner automático de QR")
     st.caption("Apunta la cámara al código QR del alumno. La detección es automática. 🔍")
 
-    if WEBRTC_DISPONIBLE:
+    usar_navegador = (ESCANER_MODO == "navegador" and _qr_scanner_comp is not None)
+
+    if usar_navegador:
+        st.caption(
+            f"💡 Al leer el QR tienes {SEGUNDOS_ESPERA_FOTO} segundos para apuntar al vehículo; "
+            "la foto de evidencia se toma sola."
+        )
+        resultado = _qr_scanner_comp(segundos=SEGUNDOS_ESPERA_FOTO, key="qr_scanner_nav", default=None)
+        if isinstance(resultado, dict) and resultado.get("qr") and resultado.get("foto"):
+            foto = base64_a_bytes(resultado["foto"])
+            if foto:
+                st.session_state["qr_escaneado_actual"] = str(resultado["qr"]).strip()
+                st.session_state["qr_foto_auto"] = foto
+                st.rerun()
+
+    elif WEBRTC_DISPONIBLE:
         col_status, col_hint = st.columns([1, 3])
         with col_status:
             st.markdown("🟢 **Cámara activa**")
         with col_hint:
             st.caption("💡 Buena iluminación y el QR completo en el recuadro = mejor detección")
+
+        ice_servers = obtener_ice_servers()
+        if not _hay_turn(ice_servers):
+            st.caption("⚠️ Sin servidor TURN configurado: la cámara puede tardar o no conectar en Streamlit Cloud.")
 
         try:
             ctx = webrtc_streamer(
@@ -451,13 +532,12 @@ def _seccion_escaner_qr(user):
                         "facingMode": "environment",
                         "width": {"ideal": 640},
                         "height": {"ideal": 480},
+                        "frameRate": {"ideal": 15},
                     },
                     "audio": False,
                 },
                 async_processing=True,
-                rtc_configuration={
-                    "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]
-                },
+                rtc_configuration={"iceServers": ice_servers},
             )
 
             if ctx.video_processor:
@@ -473,7 +553,7 @@ def _seccion_escaner_qr(user):
         st.caption("Instala `streamlit-webrtc` y `av`, o usa la entrada manual de placas.")
 
     st.markdown("---")
-    with st.expander("⌨️ Ingresar placas manualmente", expanded=not WEBRTC_DISPONIBLE):
+    with st.expander("⌨️ Ingresar placas manualmente", expanded=not (usar_navegador or WEBRTC_DISPONIBLE)):
         st.caption("Úsalo si la cámara no funciona o si el QR no se puede leer.")
         col_in, col_btn = st.columns([3, 1])
         with col_in:
