@@ -163,10 +163,8 @@ if WEBRTC_DISPONIBLE:
         def recv(self, frame):
             img = frame.to_ndarray(format="bgr24")
             self._frame_count += 1
-
             with self._lock:
                 self._last_frame = img.copy()
-
             if self._frame_count % 3 == 0:
                 with self._lock:
                     if self._qr is None:
@@ -176,16 +174,13 @@ if WEBRTC_DISPONIBLE:
                                 self._qr = data.strip()
                         except Exception:
                             pass
-
             with self._lock:
                 detectado = self._qr is not None
-
             if detectado:
                 h, w = img.shape[:2]
                 cv2.rectangle(img, (8, 8), (w - 8, h - 8), (0, 255, 0), 6)
                 cv2.putText(img, "QR DETECTADO", (25, 55),
                             cv2.FONT_HERSHEY_SIMPLEX, 1.3, (0, 255, 0), 3)
-
             return av.VideoFrame.from_ndarray(img, format="bgr24")
 
         def pop_qr(self):
@@ -243,10 +238,7 @@ def _fragment_capturando():
             "<div class='instruccion-grande'>📸 APUNTA LA CÁMARA AL VEHÍCULO AHORA</div>",
             unsafe_allow_html=True
         )
-        st.markdown(
-            f"<div class='countdown-num'>{restante}</div>",
-            unsafe_allow_html=True
-        )
+        st.markdown(f"<div class='countdown-num'>{restante}</div>", unsafe_allow_html=True)
         st.progress(min(transcurrido / SEGUNDOS_AUTOCAPTURA, 1.0))
         st.caption("Muévete hacia el vehículo. La foto se tomará automáticamente.")
         return
@@ -268,12 +260,11 @@ def _render_escaneando():
         "2️⃣ Apunta la cámara al QR del alumno\n\n"
         "3️⃣ Al detectar, verás una cuenta regresiva de "
         f"**{SEGUNDOS_AUTOCAPTURA} segundos** para mover la cámara hacia el **vehículo**\n\n"
-        "4️⃣ La foto se toma y la captura es automática"
+        "4️⃣ La foto se toma automáticamente"
     )
 
     if WEBRTC_DISPONIBLE:
         st.markdown("🟢 **Cámara lista para activar**")
-
         try:
             ctx = webrtc_streamer(
                 key="qr_scanner_caseta_v2",
@@ -2014,9 +2005,11 @@ def panel_admin():
     elif seccion == "📋 Registros":
         st.markdown("### 📋 Registros de entradas/salidas")
         fd, fh = selector_rango_fechas("registros")
+
         c1, c2 = st.columns(2)
         with c1: fe = st.selectbox("Estado", ["Todos", "DENTRO", "FUERA"], key="reg_estado")
         with c2: ft = st.selectbox("Tipo", ["Todos", "Auto", "Moto"], key="reg_tipo")
+
         buscar = st.text_input("🔍 Buscar (nombre, placas, matrícula)", key="reg_buscar").lower().strip()
         pp = mostrar_paginacion_superior("reg")
 
@@ -2028,29 +2021,33 @@ def panel_admin():
         pag = st.session_state.get("reg_pagina", 1)
         off = (pag - 1) * pp
 
-        with st.spinner("📋 Cargando registros..."):
-            total = contar_registros_filtrados(fd, fh, fe, ft, buscar or None)
-            regs = obtener_registros_paginado(fd, fh, fe, ft, buscar or None, off, pp)
+        total = contar_registros_filtrados(fd, fh, fe, ft, buscar or None)
+        regs = obtener_registros_paginado(fd, fh, fe, ft, buscar or None, off, pp)
 
         if not regs:
-            st.info("No hay registros.")
+            st.info("No hay registros en el rango seleccionado.")
         else:
             st.caption(f"**Mostrando {len(regs)} de {total} registro(s)**")
 
             df_exp = pd.DataFrame([{
-                'ID': r['id'], 'Estado': r['estado'], 'Alumno': r['nombre_completo'],
-                'Matrícula': r['matricula'], 'Carrera': r['carrera'],
-                'Tipo': r['tipo'], 'Placas': r['placas'],
-                'Fecha Entrada': r['hora_entrada'].strftime("%d/%m/%Y") if r['hora_entrada'] else "",
-                'Hora Entrada': r['hora_entrada'].strftime("%H:%M:%S") if r['hora_entrada'] else "",
-                'Fecha Salida': r['hora_salida'].strftime("%d/%m/%Y") if r['hora_salida'] else "En curso",
-                'Hora Salida': r['hora_salida'].strftime("%H:%M:%S") if r['hora_salida'] else ""
+                'ID': r['id'],
+                'Estado': r['estado'],
+                'Alumno': r['nombre_completo'],
+                'Matrícula': r['matricula'] or '',
+                'Carrera': r['carrera'] or '',
+                'Tipo': r['tipo'],
+                'Placas': r['placas'],
+                'Fecha Entrada': r['hora_entrada'].strftime("%d/%m/%Y") if r['hora_entrada'] else '',
+                'Hora Entrada': r['hora_entrada'].strftime("%H:%M:%S") if r['hora_entrada'] else '',
+                'Fecha Salida': r['hora_salida'].strftime("%d/%m/%Y") if r['hora_salida'] else 'En curso',
+                'Hora Salida': r['hora_salida'].strftime("%H:%M:%S") if r['hora_salida'] else ''
             } for r in regs])
+
+            st.dataframe(df_exp, use_container_width=True, hide_index=True)
 
             rango_txt = (f"Período: {fd.strftime('%d/%m/%Y')} - {fh.strftime('%d/%m/%Y')}"
                          if fd and fh else "Período: Todo el historial")
 
-            # Generar PDF sin spinner anidado
             pdf_bytes = None
             try:
                 pdf_bytes = generar_pdf_reporte(
@@ -2071,27 +2068,27 @@ def panel_admin():
                     key="dl_reg_pdf"
                 )
 
-            st.markdown("---")
-            for r in regs:
-                ic = "🚗" if r['tipo'] == 'Auto' else "🏍️"
-                ei = "🟢" if r['estado'] == 'DENTRO' else "🔴"
-                st.markdown(f"**{ei} {ic} {r['placas']}** — {r['nombre_completo']}")
-                st.caption(f"Matrícula: {r['matricula'] or 'N/A'} · Carrera: {r['carrera'] or 'N/A'}")
-                st.caption(f"⬇️ Entrada: {r['hora_entrada']} · ⬆️ Salida: {r['hora_salida'] or '—'}")
-                if r['evidencia_entrada'] or r['evidencia_salida']:
-                    if st.button("📸 Ver evidencias", key=f"ver_ev_{r['id']}", use_container_width=True):
-                        st.session_state[f"mostrar_ev_{r['id']}"] = not st.session_state.get(f"mostrar_ev_{r['id']}", False)
-                    if st.session_state.get(f"mostrar_ev_{r['id']}", False):
-                        if r['evidencia_entrada']:
+            with st.expander("📸 Ver evidencias fotográficas"):
+                ids_con_ev = [r['id'] for r in regs if r['evidencia_entrada'] or r['evidencia_salida']]
+                if not ids_con_ev:
+                    st.info("Ninguno de los registros mostrados tiene evidencias.")
+                else:
+                    sel_id = st.selectbox("Selecciona un ID de registro", ids_con_ev, key="ev_sel_reg")
+                    reg = next((x for x in regs if x['id'] == sel_id), None)
+                    if reg:
+                        st.markdown(f"**Registro #{reg['id']} — {reg['placas']} ({reg['nombre_completo']})**")
+                        if reg['evidencia_entrada']:
                             st.markdown("**📷 Entrada:**")
-                            img = base64_a_bytes(r['evidencia_entrada'])
-                            if img: st.image(img, use_container_width=True)
-                        if r['evidencia_salida']:
+                            img = base64_a_bytes(reg['evidencia_entrada'])
+                            if img:
+                                st.image(img, use_container_width=True)
+                        if reg['evidencia_salida']:
                             st.markdown("**📷 Salida:**")
-                            img = base64_a_bytes(r['evidencia_salida'])
-                            if img: st.image(img, use_container_width=True)
-                st.markdown("---")
+                            img = base64_a_bytes(reg['evidencia_salida'])
+                            if img:
+                                st.image(img, use_container_width=True)
 
+            st.markdown("---")
             render_paginacion_inferior("reg", pag, total, pp, "reg_pagina")
 
     elif seccion == "📈 Métricas":
@@ -2131,13 +2128,16 @@ def panel_admin():
         st.markdown("### 🔍 Registro de Auditoría")
         st.caption("Historial de acciones importantes.")
         st.metric("Total de registros", contar_logs())
+
         fd, fh = selector_rango_fechas("auditoria")
+
         c1, c2 = st.columns(2)
         with c1:
             acciones = ["Todas"] + obtener_acciones_unicas()
             fac = st.selectbox("Filtrar por acción", acciones, key="aud_accion")
         with c2:
             buscar = st.text_input("🔍 Buscar (usuario o detalle)", key="aud_buscar").lower().strip()
+
         pp = mostrar_paginacion_superior("aud")
 
         fa = f"{fd}|{fh}|{fac}|{buscar}|{pp}"
@@ -2148,28 +2148,30 @@ def panel_admin():
         pag = st.session_state.get("aud_pagina", 1)
         off = (pag - 1) * pp
 
-        with st.spinner("🔍 Cargando logs..."):
-            total = contar_logs_filtrados(fac, buscar or None, fd, fh)
-            logs = obtener_logs(limite=pp, filtro_accion=fac,
-                                buscar=buscar if buscar else None,
-                                fecha_desde=fd, fecha_hasta=fh, offset=off)
+        total = contar_logs_filtrados(fac, buscar or None, fd, fh)
+        logs = obtener_logs(limite=pp, filtro_accion=fac,
+                            buscar=buscar if buscar else None,
+                            fecha_desde=fd, fecha_hasta=fh, offset=off)
 
         if not logs:
-            st.info("No hay logs.")
+            st.info("No hay logs que coincidan con los filtros.")
         else:
             st.write(f"**Mostrando {len(logs)} de {total} registro(s)**")
+
             df_logs = pd.DataFrame([{
                 'ID': l['id'],
-                'Fecha': l['fecha'].strftime("%d/%m/%Y") if l['fecha'] else "",
-                'Hora': l['fecha'].strftime("%H:%M:%S") if l['fecha'] else "",
+                'Fecha': l['fecha'].strftime("%d/%m/%Y %H:%M:%S") if l['fecha'] else '',
                 'Acción': l['accion'],
                 'Usuario': f"@{l['usuario_accion']}" if l['usuario_accion'] else "Sistema",
-                'Nombre completo': l['nombre_accion'] or "",
-                'Rol': l['rol_accion'] or "",
-                'Detalles': l['detalles'] or "",
-                'Tabla afectada': l['tabla_afectada'] or "",
-                'ID afectado': l['id_afectado'] if l['id_afectado'] else ""
+                'Nombre': l['nombre_accion'] or '',
+                'Rol': l['rol_accion'] or '',
+                'Detalles': l['detalles'] or '',
+                'Tabla afectada': l['tabla_afectada'] or '',
+                'ID afectado': l['id_afectado'] if l['id_afectado'] else ''
             } for l in logs])
+
+            st.dataframe(df_logs, use_container_width=True, hide_index=True)
+
             rango_txt = (f"Período: {fd.strftime('%d/%m/%Y')} - {fh.strftime('%d/%m/%Y')}"
                          if fd and fh else "Período: Todo el historial")
 
@@ -2192,36 +2194,6 @@ def panel_admin():
                     type="primary",
                     key="dl_aud_pdf"
                 )
-
-            st.markdown("---")
-            colores = {
-                "INICIO_SESION": "#00ff88",
-                "CREAR_ALUMNO": "#C9A961", "CREAR_TRABAJADOR": "#C9A961", "CREAR_ADMIN": "#D7192D",
-                "EDITAR_USUARIO": "#C9A961",
-                "DESACTIVAR_USUARIO": "#D7192D", "REACTIVAR_USUARIO": "#00ff88",
-                "ELIMINAR_USUARIO": "#7B1B2E", "ELIMINAR_VEHICULO": "#7B1B2E",
-                "CREAR_VEHICULO": "#C9A961",
-                "REGISTRAR_ENTRADA": "#00ff88", "REGISTRAR_SALIDA": "#C9A961",
-                "DESBLOQUEAR_USUARIO": "#00ff88",
-                "CAMBIAR_PASSWORD": "#C9A961",
-                "ACTUALIZAR_TELEFONO": "#C9A961",
-                "ENVIAR_MENSAJE": "#0066B3",
-            }
-            for l in logs:
-                col = colores.get(l['accion'], "#C9A961")
-                ir = {'alumno': '🎓', 'trabajador': '👷', 'admin': '👑'}.get(l['rol_accion'], '👤')
-                fs = l['fecha'].strftime("%d/%m/%Y %H:%M:%S") if l['fecha'] else "N/A"
-                st.markdown(f"""
-                    <div class="log-row" style="border-left-color: {col};">
-                        <div style="display:flex; justify-content:space-between; flex-wrap:wrap;">
-                            <span class="log-accion" style="color: {col};">{l['accion']}</span>
-                            <span class="log-fecha">{fs}</span>
-                        </div>
-                        <div class="log-detalle">{ir} <b>@{l['usuario_accion'] or 'sistema'}</b>
-                            {f"({l['nombre_accion']})" if l['nombre_accion'] else ""}</div>
-                        <div class="log-detalle">{l['detalles'] or ''}</div>
-                    </div>
-                """, unsafe_allow_html=True)
 
             st.markdown("---")
             render_paginacion_inferior("aud", pag, total, pp, "aud_pagina")
