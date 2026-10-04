@@ -59,7 +59,7 @@ LOGO_ESCUDO_URL = "https://raw.githubusercontent.com/cj3302718-netizen/Estaciona
 
 st.set_page_config(page_title="CUYPARK", page_icon=LOGO_ESCUDO_URL, layout="centered")
 
-APP_VERSION = "v5.0-anti-none"
+APP_VERSION = "v5.1-vectorizado"
 st.session_state["_app_version"] = APP_VERSION
 
 COLOR_VINO = "#7B1B2E"
@@ -139,20 +139,9 @@ st.markdown("""
     .countdown-num { font-size:7rem; font-weight:900; text-align:center; color:#ff4444; line-height:1; animation: fadeInScale .3s ease-out; text-shadow: 0 0 40px rgba(255,68,68,.8); }
     .instruccion-grande { text-align:center; font-size:1.4rem; font-weight:800; color:#C9A961; padding:16px; background: linear-gradient(135deg, rgba(123,27,46,.4), rgba(215,25,45,.3)); border-radius:12px; border:2px solid #C9A961; margin:12px 0; }
 
-    /* ============================================================
-       OCULTAR BADGES "None" RESIDUALES DE STREAMLIT
-       ============================================================ */
-    div[data-testid="stMarkdownContainer"] > div:empty,
-    div[data-testid="stMarkdownContainer"] > span:empty,
-    div[data-testid="stMarkdownContainer"] > p:empty { display:none !important; height:0 !important; margin:0 !important; padding:0 !important; }
-    [data-baseweb="badge"]:empty,
-    span[data-baseweb="badge"]:not(:has(*)):not([data-testid]) { display:none !important; }
-    div.stElementContainer:has(> div > div > span:only-child):not(:has(button)):not(:has(a)):not(:has(img)) { display:none !important; }
-    div[data-testid="stMarkdown"] span[style*="color"] { color: transparent !important; }
-
     @media (max-width: 768px) {
         .stButton > button { min-height:48px !important; font-size:.95rem !important; padding:10px 14px !important; border-radius:12px !important; }
-        .stTextInput > div > div > input, .stSelectbox > div > div > div { min-height:44px !important; font-size:16px !important; }
+        .stTextInput > div > div > input, .stSelectbox > div div > div { min-height:44px !important; font-size:16px !important; }
         .block-container { padding-left:12px !important; padding-right:12px !important; padding-top:20px !important; }
         h1 { font-size:1.5rem !important; } h2 { font-size:1.3rem !important; } h3 { font-size:1.1rem !important; }
         .logo-medallon img { width:100px; height:100px; }
@@ -162,59 +151,84 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ============================================================
-# ELIMINADOR DE BADGES "None" RESIDUALES DE STREAMLIT CLOUD
-# ============================================================
-components.html("""
-<script>
-(function() {
-    const parentDoc = window.parent.document;
-
-    function eliminarNones() {
-        try {
-            const todos = parentDoc.querySelectorAll('span, div, p, small, b, strong, em, li');
-            todos.forEach(function(el) {
-                const txt = (el.textContent || '').trim();
-                if (txt === 'None' && el.children.length === 0) {
-                    el.style.display = 'none';
-                    el.style.height = '0';
-                    el.style.margin = '0';
-                    el.style.padding = '0';
-                    el.style.visibility = 'hidden';
-                    el.style.opacity = '0';
-                    el.setAttribute('aria-hidden', 'true');
-                    if (el.parentElement) {
-                        el.parentElement.style.display = 'none';
-                        el.parentElement.style.height = '0';
-                        el.parentElement.style.margin = '0';
-                        el.parentElement.style.padding = '0';
-                    }
-                }
-            });
-
-            parentDoc.querySelectorAll('[data-baseweb="badge"], [data-baseweb="tag"]').forEach(function(b) {
-                const t = (b.textContent || '').trim();
-                if (t === 'None' || t === '' || t === 'null') {
-                    b.style.display = 'none';
-                    b.style.height = '0';
-                    b.setAttribute('aria-hidden', 'true');
-                }
-            });
-        } catch (e) { /* ignorar */ }
-    }
-
-    eliminarNones();
-    setInterval(eliminarNones, 300);
-
-    try {
-        const observer = new MutationObserver(eliminarNones);
-        observer.observe(parentDoc.body, { childList: true, subtree: true, characterData: true });
-    } catch (e) { /* ignorar */ }
-})();
-</script>
-""", height=0)
-
 st.caption(f"🔧 Versión: {APP_VERSION}")
+
+
+# ============================================================
+# HELPERS PARA CONSTRUIR DATAFRAMES SIN LIST COMPREHENSIONS
+# ============================================================
+def _df_registros(regs):
+    """Construye DataFrame de registros usando SOLO pandas vectorizado."""
+    if not regs:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(regs)
+    if df.empty:
+        return df
+
+    df['hora_entrada'] = pd.to_datetime(df['hora_entrada'], errors='coerce')
+    df['hora_salida'] = pd.to_datetime(df['hora_salida'], errors='coerce')
+
+    df['Fecha Entrada'] = df['hora_entrada'].dt.strftime("%d/%m/%Y").fillna('')
+    df['Hora Entrada'] = df['hora_entrada'].dt.strftime("%H:%M:%S").fillna('')
+    df['Fecha Salida'] = df['hora_salida'].dt.strftime("%d/%m/%Y")
+    df['Hora Salida'] = df['hora_salida'].dt.strftime("%H:%M:%S").fillna('')
+    df['Fecha Salida'] = df['Fecha Salida'].fillna('En curso')
+
+    df['nombre_completo'] = df['nombre_completo'].fillna('')
+    df['matricula'] = df['matricula'].fillna('')
+    df['carrera'] = df['carrera'].fillna('')
+
+    df = df.rename(columns={
+        'id': 'ID',
+        'estado': 'Estado',
+        'nombre_completo': 'Alumno',
+        'matricula': 'Matrícula',
+        'carrera': 'Carrera',
+        'tipo': 'Tipo',
+        'placas': 'Placas',
+    })
+
+    cols = ['ID', 'Estado', 'Alumno', 'Matrícula', 'Carrera', 'Tipo', 'Placas',
+            'Fecha Entrada', 'Hora Entrada', 'Fecha Salida', 'Hora Salida']
+    cols = [c for c in cols if c in df.columns]
+    return df[cols]
+
+
+def _df_logs(logs):
+    """Construye DataFrame de logs usando SOLO pandas vectorizado."""
+    if not logs:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(logs)
+    if df.empty:
+        return df
+
+    df['fecha'] = pd.to_datetime(df['fecha'], errors='coerce')
+    df['Fecha'] = df['fecha'].dt.strftime("%d/%m/%Y %H:%M:%S").fillna('')
+
+    df['usuario_accion'] = df['usuario_accion'].fillna('sistema')
+    df['Usuario'] = "@" + df['usuario_accion'].astype(str)
+    df['nombre_accion'] = df['nombre_accion'].fillna('')
+    df['rol_accion'] = df['rol_accion'].fillna('')
+    df['detalles'] = df['detalles'].fillna('')
+    df['tabla_afectada'] = df['tabla_afectada'].fillna('')
+    df['id_afectado'] = df['id_afectado'].fillna('')
+
+    df = df.rename(columns={
+        'id': 'ID',
+        'accion': 'Acción',
+        'nombre_accion': 'Nombre',
+        'rol_accion': 'Rol',
+        'detalles': 'Detalles',
+        'tabla_afectada': 'Tabla afectada',
+        'id_afectado': 'ID afectado',
+    })
+
+    cols = ['ID', 'Fecha', 'Acción', 'Usuario', 'Nombre', 'Rol',
+            'Detalles', 'Tabla afectada', 'ID afectado']
+    cols = [c for c in cols if c in df.columns]
+    return df[cols]
 
 
 # ============================================================
@@ -648,37 +662,6 @@ def selector_rango_fechas(key_prefix):
         st.info("📅 **Todos los registros** (sin filtro de fecha)")
 
     return fd, fh
-
-
-def mostrar_paginacion_superior(key, por_pagina_options=(10, 20, 50, 100)):
-    key_pp = f"{key}_por_pagina"
-    if key_pp not in st.session_state:
-        st.session_state[key_pp] = 20
-    c1, c2 = st.columns([1, 3])
-    with c1:
-        st.session_state[key_pp] = st.selectbox(
-            "Por página", por_pagina_options,
-            index=por_pagina_options.index(st.session_state[key_pp]),
-            key=f"{key}_pp_sel"
-        )
-    return st.session_state[key_pp]
-
-
-def render_paginacion_inferior(key, pagina, total, por_pagina, session_pag_key):
-    total_pags = max(1, (total + por_pagina - 1) // por_pagina)
-    c1, c2, c3 = st.columns([1, 2, 1])
-    with c1:
-        if st.button("⬅️ Anterior", key=f"{key}_prev_b", disabled=(pagina <= 1), use_container_width=True):
-            st.session_state[session_pag_key] = pagina - 1; st.rerun()
-    with c2:
-        st.markdown(
-            f"<div style='text-align:center; color:#C9A961; padding-top:6px;'>"
-            f"Página {pagina} de {total_pags}</div>",
-            unsafe_allow_html=True
-        )
-    with c3:
-        if st.button("Siguiente ➡️", key=f"{key}_next_b", disabled=(pagina >= total_pags), use_container_width=True):
-            st.session_state[session_pag_key] = pagina + 1; st.rerun()
 
 
 def notificar_entrada_reciente(user):
@@ -1867,8 +1850,7 @@ def panel_admin():
                 filtro = st.selectbox("Filtrar por rol", ["Todos", "alumno", "trabajador", "admin"])
             with cf2:
                 sa = st.checkbox("Solo activos", value=False)
-            with st.spinner("📋 Cargando..."):
-                us = obtener_todos_usuarios(None if filtro == "Todos" else filtro, solo_activos=sa)
+            us = obtener_todos_usuarios(None if filtro == "Todos" else filtro, solo_activos=sa)
             if not us:
                 st.info("No hay usuarios.")
             else:
@@ -1899,8 +1881,7 @@ def panel_admin():
                     )
                     st.plotly_chart(fc, use_container_width=True, config={"displayModeBar": False})
                     if st.button("⚡ Crear índices recomendados", use_container_width=True, key="btn_indices"):
-                        with st.spinner("Creando..."):
-                            cr, er = crear_indices()
+                        cr, er = crear_indices()
                         st.success(f"✅ {len(cr)} índice(s) creado(s).")
                         if er: st.caption(f"ℹ️ {len(er)} ya existían.")
 
@@ -2080,37 +2061,16 @@ def panel_admin():
         with c2: ft = st.selectbox("Tipo", ["Todos", "Auto", "Moto"], key="reg_tipo")
 
         buscar = st.text_input("🔍 Buscar (nombre, placas, matrícula)", key="reg_buscar").lower().strip()
-        pp = mostrar_paginacion_superior("reg")
 
-        fa = f"{fd}|{fh}|{fe}|{ft}|{buscar}|{pp}"
-        if st.session_state.get("reg_filtros_prev") != fa:
-            st.session_state["reg_pagina"] = 1
-            st.session_state["reg_filtros_prev"] = fa
+        regs = obtener_registros_paginado(fd, fh, fe, ft, buscar or None, 0, 10000)
+        total = len(regs)
 
-        pag = st.session_state.get("reg_pagina", 1)
-        off = (pag - 1) * pp
-
-        total = contar_registros_filtrados(fd, fh, fe, ft, buscar or None)
-        regs = obtener_registros_paginado(fd, fh, fe, ft, buscar or None, off, pp)
-
-        if not regs:
+        if total == 0:
             st.info("No hay registros en el rango seleccionado.")
         else:
             st.write(f"**Total de registros: {total}**")
 
-            df_exp = pd.DataFrame([{
-                'ID': r['id'],
-                'Estado': r['estado'],
-                'Alumno': r['nombre_completo'],
-                'Matrícula': r['matricula'] or '',
-                'Carrera': r['carrera'] or '',
-                'Tipo': r['tipo'],
-                'Placas': r['placas'],
-                'Fecha Entrada': r['hora_entrada'].strftime("%d/%m/%Y") if r['hora_entrada'] else '',
-                'Hora Entrada': r['hora_entrada'].strftime("%H:%M:%S") if r['hora_entrada'] else '',
-                'Fecha Salida': r['hora_salida'].strftime("%d/%m/%Y") if r['hora_salida'] else 'En curso',
-                'Hora Salida': r['hora_salida'].strftime("%H:%M:%S") if r['hora_salida'] else ''
-            } for r in regs])
+            df_exp = _df_registros(regs)
 
             rango_txt = (f"Período: {fd.strftime('%d/%m/%Y')} - {fh.strftime('%d/%m/%Y')}"
                          if fd and fh else "Período: Todo el historial")
@@ -2136,32 +2096,29 @@ def panel_admin():
                 )
 
             with st.expander("📸 Ver evidencias fotográficas"):
-                ids_con_ev = [r['id'] for r in regs if r['evidencia_entrada'] or r['evidencia_salida']]
-                if not ids_con_ev:
+                regs_con_ev = [r for r in regs if r.get('evidencia_entrada') or r.get('evidencia_salida')]
+                if not regs_con_ev:
                     st.info("Ninguno de los registros mostrados tiene evidencias.")
                 else:
-                    sel_id = st.selectbox("Selecciona un ID de registro", ids_con_ev, key="ev_sel_reg")
-                    reg = next((x for x in regs if x['id'] == sel_id), None)
+                    ids_disp = [r['id'] for r in regs_con_ev]
+                    sel_id = st.selectbox("Selecciona un ID de registro", ids_disp, key="ev_sel_reg")
+                    reg = next((x for x in regs_con_ev if x['id'] == sel_id), None)
                     if reg:
                         st.markdown(f"**Registro #{reg['id']} — {reg['placas']} ({reg['nombre_completo']})**")
-                        if reg['evidencia_entrada']:
+                        if reg.get('evidencia_entrada'):
                             st.markdown("**📷 Entrada:**")
                             img = base64_a_bytes(reg['evidencia_entrada'])
                             if img:
                                 st.image(img, use_container_width=True)
-                        if reg['evidencia_salida']:
+                        if reg.get('evidencia_salida'):
                             st.markdown("**📷 Salida:**")
                             img = base64_a_bytes(reg['evidencia_salida'])
                             if img:
                                 st.image(img, use_container_width=True)
 
-            st.markdown("---")
-            render_paginacion_inferior("reg", pag, total, pp, "reg_pagina")
-
     elif seccion == "📈 Métricas":
         st.markdown("### 📈 Métricas y patrones")
-        with st.spinner("📈 Calculando..."):
-            regs = obtener_todos_los_registros()
+        regs = obtener_todos_los_registros()
         if not regs:
             st.info("Sin datos suficientes.")
         else:
@@ -2205,37 +2162,17 @@ def panel_admin():
         with c2:
             buscar = st.text_input("🔍 Buscar (usuario o detalle)", key="aud_buscar").lower().strip()
 
-        pp = mostrar_paginacion_superior("aud")
-
-        fa = f"{fd}|{fh}|{fac}|{buscar}|{pp}"
-        if st.session_state.get("aud_filtros_prev") != fa:
-            st.session_state["aud_pagina"] = 1
-            st.session_state["aud_filtros_prev"] = fa
-
-        pag = st.session_state.get("aud_pagina", 1)
-        off = (pag - 1) * pp
-
-        total = contar_logs_filtrados(fac, buscar or None, fd, fh)
-        logs = obtener_logs(limite=pp, filtro_accion=fac,
+        logs = obtener_logs(limite=10000, filtro_accion=fac,
                             buscar=buscar if buscar else None,
-                            fecha_desde=fd, fecha_hasta=fh, offset=off)
+                            fecha_desde=fd, fecha_hasta=fh, offset=0)
+        total = len(logs)
 
-        if not logs:
+        if total == 0:
             st.info("No hay logs que coincidan con los filtros.")
         else:
             st.write(f"**Total de eventos: {total}**")
 
-            df_logs = pd.DataFrame([{
-                'ID': l['id'],
-                'Fecha': l['fecha'].strftime("%d/%m/%Y %H:%M:%S") if l['fecha'] else '',
-                'Acción': l['accion'],
-                'Usuario': f"@{l['usuario_accion']}" if l['usuario_accion'] else "Sistema",
-                'Nombre': l['nombre_accion'] or '',
-                'Rol': l['rol_accion'] or '',
-                'Detalles': l['detalles'] or '',
-                'Tabla afectada': l['tabla_afectada'] or '',
-                'ID afectado': l['id_afectado'] if l['id_afectado'] else ''
-            } for l in logs])
+            df_logs = _df_logs(logs)
 
             rango_txt = (f"Período: {fd.strftime('%d/%m/%Y')} - {fh.strftime('%d/%m/%Y')}"
                          if fd and fh else "Período: Todo el historial")
@@ -2259,9 +2196,6 @@ def panel_admin():
                     type="primary",
                     key="dl_aud_pdf"
                 )
-
-            st.markdown("---")
-            render_paginacion_inferior("aud", pag, total, pp, "aud_pagina")
 
     elif seccion == "💬 Mensajes":
         st.markdown("### 💬 Mensajes")
@@ -2342,8 +2276,7 @@ def panel_admin():
         st.markdown("### 🚗 Vehículos registrados")
         st.caption("Busca un vehículo para ver su historial.")
         bv = st.text_input("🔍 Buscar por placas, alumno o matrícula", key="veh_buscar_admin").strip()
-        with st.spinner("🔎 Buscando..."):
-            vh = buscar_vehiculos_admin(bv if bv else None, limite=50)
+        vh = buscar_vehiculos_admin(bv if bv else None, limite=50)
         if not vh:
             st.info("No se encontraron vehículos.")
         else:
