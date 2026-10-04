@@ -567,7 +567,10 @@ def generar_pdf_reporte(df, titulo, subtitulo=""):
             pdf.set_font("Helvetica", "", 7)
             pdf.set_text_color(40, 40, 40)
 
-        pdf.set_fill_color(245, 240, 232) if fill else pdf.set_fill_color(255, 255, 255)
+        if fill:
+            pdf.set_fill_color(245, 240, 232)
+        else:
+            pdf.set_fill_color(255, 255, 255)
         pdf.set_x(10)
         for i, c in enumerate(cols):
             val = row[c]
