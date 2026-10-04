@@ -58,6 +58,9 @@ LOGO_ESCUDO_URL = "https://raw.githubusercontent.com/cj3302718-netizen/Estaciona
 
 st.set_page_config(page_title="CUYPARK", page_icon=LOGO_ESCUDO_URL, layout="centered")
 
+APP_VERSION = "v3.0-st.html"
+st.session_state["_app_version"] = APP_VERSION
+
 COLOR_VINO = "#7B1B2E"
 COLOR_VINO_CLARO = "#D7192D"
 COLOR_DORADO = "#C9A961"
@@ -146,6 +149,9 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
+
+# Marcador de versión visible para verificar despliegue
+st.caption(f"🔧 Versión: {APP_VERSION}")
 
 
 # ============================================================
@@ -536,10 +542,10 @@ def generar_pdf_reporte(df, titulo, subtitulo=""):
 
 
 # ============================================================
-# TABLA HTML PURA (evita el bug de "None" en st.dataframe)
+# TABLA HTML PURA usando st.html() - CLAVE PARA EVITAR "None"
 # ============================================================
 def render_tabla_html(df, max_rows=200):
-    """Renderiza un DataFrame como tabla HTML pura. Sin widgets Streamlit = sin badges 'None'."""
+    """Tabla HTML usando st.html() que NO fragmenta el contenido."""
     if df is None or df.empty:
         st.info("No hay datos para mostrar.")
         return
@@ -569,7 +575,12 @@ def render_tabla_html(df, max_rows=200):
         html += "</tr>"
 
     html += "</tbody></table></div>"
-    st.markdown(html, unsafe_allow_html=True)
+
+    # st.html() no procesa markdown → no genera badges "None"
+    try:
+        st.html(html)
+    except AttributeError:
+        st.markdown(html, unsafe_allow_html=True)
 
 
 # ============================================================
