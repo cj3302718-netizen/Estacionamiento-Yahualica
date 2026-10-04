@@ -15,6 +15,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from fpdf import FPDF
+import streamlit.components.v1 as components
 
 from db import (
     autenticar, crear_usuario, usuario_existe, contar_admins,
@@ -58,7 +59,7 @@ LOGO_ESCUDO_URL = "https://raw.githubusercontent.com/cj3302718-netizen/Estaciona
 
 st.set_page_config(page_title="CUYPARK", page_icon=LOGO_ESCUDO_URL, layout="centered")
 
-APP_VERSION = "v4.0-sin-tablas"
+APP_VERSION = "v5.0-anti-none"
 st.session_state["_app_version"] = APP_VERSION
 
 COLOR_VINO = "#7B1B2E"
@@ -138,6 +139,17 @@ st.markdown("""
     .countdown-num { font-size:7rem; font-weight:900; text-align:center; color:#ff4444; line-height:1; animation: fadeInScale .3s ease-out; text-shadow: 0 0 40px rgba(255,68,68,.8); }
     .instruccion-grande { text-align:center; font-size:1.4rem; font-weight:800; color:#C9A961; padding:16px; background: linear-gradient(135deg, rgba(123,27,46,.4), rgba(215,25,45,.3)); border-radius:12px; border:2px solid #C9A961; margin:12px 0; }
 
+    /* ============================================================
+       OCULTAR BADGES "None" RESIDUALES DE STREAMLIT
+       ============================================================ */
+    div[data-testid="stMarkdownContainer"] > div:empty,
+    div[data-testid="stMarkdownContainer"] > span:empty,
+    div[data-testid="stMarkdownContainer"] > p:empty { display:none !important; height:0 !important; margin:0 !important; padding:0 !important; }
+    [data-baseweb="badge"]:empty,
+    span[data-baseweb="badge"]:not(:has(*)):not([data-testid]) { display:none !important; }
+    div.stElementContainer:has(> div > div > span:only-child):not(:has(button)):not(:has(a)):not(:has(img)) { display:none !important; }
+    div[data-testid="stMarkdown"] span[style*="color"] { color: transparent !important; }
+
     @media (max-width: 768px) {
         .stButton > button { min-height:48px !important; font-size:.95rem !important; padding:10px 14px !important; border-radius:12px !important; }
         .stTextInput > div > div > input, .stSelectbox > div > div > div { min-height:44px !important; font-size:16px !important; }
@@ -149,6 +161,58 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
+
+# ============================================================
+# ELIMINADOR DE BADGES "None" RESIDUALES DE STREAMLIT CLOUD
+# ============================================================
+components.html("""
+<script>
+(function() {
+    const parentDoc = window.parent.document;
+
+    function eliminarNones() {
+        try {
+            const todos = parentDoc.querySelectorAll('span, div, p, small, b, strong, em, li');
+            todos.forEach(function(el) {
+                const txt = (el.textContent || '').trim();
+                if (txt === 'None' && el.children.length === 0) {
+                    el.style.display = 'none';
+                    el.style.height = '0';
+                    el.style.margin = '0';
+                    el.style.padding = '0';
+                    el.style.visibility = 'hidden';
+                    el.style.opacity = '0';
+                    el.setAttribute('aria-hidden', 'true');
+                    if (el.parentElement) {
+                        el.parentElement.style.display = 'none';
+                        el.parentElement.style.height = '0';
+                        el.parentElement.style.margin = '0';
+                        el.parentElement.style.padding = '0';
+                    }
+                }
+            });
+
+            parentDoc.querySelectorAll('[data-baseweb="badge"], [data-baseweb="tag"]').forEach(function(b) {
+                const t = (b.textContent || '').trim();
+                if (t === 'None' || t === '' || t === 'null') {
+                    b.style.display = 'none';
+                    b.style.height = '0';
+                    b.setAttribute('aria-hidden', 'true');
+                }
+            });
+        } catch (e) { /* ignorar */ }
+    }
+
+    eliminarNones();
+    setInterval(eliminarNones, 300);
+
+    try {
+        const observer = new MutationObserver(eliminarNones);
+        observer.observe(parentDoc.body, { childList: true, subtree: true, characterData: true });
+    } catch (e) { /* ignorar */ }
+})();
+</script>
+""", height=0)
 
 st.caption(f"🔧 Versión: {APP_VERSION}")
 
