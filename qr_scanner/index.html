@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; color: #f5f0e8;
+               font-family: "Source Sans Pro", -apple-system, "Segoe UI", sans-serif; }
+  #wrap { position: relative; width: 100%; max-width: 640px; margin: 0 auto;
+          aspect-ratio: 4 / 3; background: #111; border-radius: 12px; overflow: hidden; }
+  video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  #marco { position: absolute; inset: 0; border: 6px solid transparent; border-radius: 12px;
+           pointer-events: none; transition: border-color .2s; }
+  #msg { position: absolute; left: 0; right: 0; top: 0; padding: 10px 14px; font-size: 15px;
+         font-weight: 600; background: rgba(0, 0, 0, .6); }
+  #num { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+         font-size: 130px; font-weight: 800; color: #ffc800; opacity: 0; pointer-events: none;
+         text-shadow: 0 0 14px #000; }
+  #err { display: none; padding: 14px; margin-top: 8px; border-radius: 10px;
+         background: rgba(215, 25, 45, .25); border: 1px solid #D7192D; font-size: 14px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <video id="v" playsinline muted autoplay></video>
+  <div id="marco"></div>
+  <div id="msg">Iniciando cámara…</div>
+  <div id="num"></div>
+</div>
+<div id="err"></div>
+<canvas id="c" style="display:none"></canvas>
+
+<script src="jsQR.js"></script>
+<script>
+(function () {
+  var SEG = 5;                 // segundos de espera para apuntar al vehículo (lo recibe de Python)
+  var iniciado = false, estado = 'inicio', qr = null, t0 = 0, flujo = null, timer = null;
+
+  var $ = function (id) { return document.getElementById(id); };
+  var v = $('v'), c = $('c'), wrap = $('wrap');
+  var ctx = c.getContext('2d', { willReadFrequently: true });
+
+  // ---- Protocolo de componentes de Streamlit (sin necesidad de compilar nada) ----
+  function post(type, data) {
+    var m = { isStreamlitMessage: true, type: type };
+    for (var k in data) { m[k] = data[k]; }
+    window.parent.postMessage(m, '*');
+  }
+  function ajustarAltura() { post('streamlit:setFrameHeight', { height: wrap.offsetHeight + 12 }); }
+
+  window.addEventListener('message', function (e) {
+    var d = e.data || {};
+    if (d.type === 'streamlit:render') {
+      if (d.args && d.args.segundos) { SEG = d.args.segundos; }
+      if (!iniciado) { iniciado = true; iniciar(); }
+    }
+  });
+  post('streamlit:componentReady', { apiVersion: 1 });
+  ajustarAltura();
+  window.addEventListener('resize', ajustarAltura);
+
+  // ---- Interfaz ----
+  function msg(t) { $('msg').textContent = t; }
+  function marco(color) { $('marco').style.borderColor = color; }
+  function error(t) {
+    msg('⚠️ Cámara no disponible');
+    $('err').style.display = 'block';
+    $('err').textContent = t;
+    ajustarAltura();
+  }
+
+  // ---- Cámara ----
+  function iniciar() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      error('Este navegador no permite usar la cámara. Usa Chrome, Edge o Safari actualizados.');
+      return;
+    }
+    navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false
+    }).then(function (stream) {
+      flujo = stream;
+      v.srcObject = stream;
+      var p = v.play();
+      if (p && p.catch) { p.catch(function () {}); }
+      estado = 'buscando';
+      marco('rgba(255,255,255,.35)');
+      msg('📷 Apunta la cámara al código QR del alumno');
+      timer = setInterval(tick, 150);
+    }).catch(function (err) {
+      error('No se pudo abrir la cámara (' + (err && err.name ? err.name : err) +
+            '). Da permiso de cámara a este sitio y recarga la página.');
+    });
+  }
+
+  function detener() {
+    if (timer) { clearInterval(timer); timer = null; }
+    if (flujo) { flujo.getTracks().forEach(function (t) { t.stop(); }); flujo = null; }
+  }
+
+  // ---- Ciclo: buscar QR -> cuenta regresiva -> foto ----
+  function tick() {
+    if (!v.videoWidth) { return; }
+
+    if (estado === 'buscando') {
+      var w = Math.min(640, v.videoWidth);
+      var h = Math.round(v.videoHeight * w / v.videoWidth);
+      c.width = w; c.height = h;
+      ctx.drawImage(v, 0, 0, w, h);
+      var img = ctx.getImageData(0, 0, w, h);
+      var code = jsQR(img.data, w, h, { inversionAttempts: 'dontInvert' });
+      if (code && code.data && code.data.trim().length > 3) {
+        qr = code.data.trim();
+        t0 = Date.now();
+        estado = 'cuenta';
+        marco('#ffc800');
+      }
+    } else if (estado === 'cuenta') {
+      var resta = SEG - (Date.now() - t0) / 1000;
+      if (resta > 0) {
+        var n = Math.min(SEG, Math.ceil(resta));
+        $('num').textContent = n;
+        $('num').style.opacity = 1;
+        msg('✅ QR leído. Apunta al vehículo: foto en ' + n + ' s');
+      } else {
+        capturar();
+      }
+    }
+  }
+
+  function capturar() {
+    estado = 'fin';
+    var w = Math.min(960, v.videoWidth);
+    var h = Math.round(v.videoHeight * w / v.videoWidth);
+    c.width = w; c.height = h;
+    ctx.drawImage(v, 0, 0, w, h);                       // fotograma limpio, sin textos encima
+    var foto = c.toDataURL('image/jpeg', 0.82).split(',')[1];
+    $('num').style.opacity = 0;
+    marco('#00e676');
+    msg('📸 Foto tomada');
+    detener();
+    post('streamlit:setComponentValue', {
+      value: { qr: qr, foto: foto, ts: Date.now() },
+      dataType: 'json'
+    });
+  }
+})();
+</script>
+</body>
+</html>
