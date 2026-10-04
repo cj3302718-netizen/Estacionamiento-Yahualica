@@ -536,6 +536,43 @@ def generar_pdf_reporte(df, titulo, subtitulo=""):
 
 
 # ============================================================
+# TABLA HTML PURA (evita el bug de "None" en st.dataframe)
+# ============================================================
+def render_tabla_html(df, max_rows=200):
+    """Renderiza un DataFrame como tabla HTML pura. Sin widgets Streamlit = sin badges 'None'."""
+    if df is None or df.empty:
+        st.info("No hay datos para mostrar.")
+        return
+
+    html = "<div style='overflow-x:auto; margin:10px 0;'>"
+    html += "<table style='width:100%; border-collapse:collapse; font-size:0.78rem;'>"
+
+    html += "<thead><tr>"
+    for col in df.columns:
+        html += (
+            f"<th style='background:linear-gradient(135deg,#7B1B2E,#D7192D); "
+            f"color:#C9A961; padding:8px 6px; text-align:left; "
+            f"border:1px solid #C9A961; font-weight:700; white-space:nowrap;'>"
+            f"{col}</th>"
+        )
+    html += "</tr></thead><tbody>"
+
+    for i, (_, row) in enumerate(df.head(max_rows).iterrows()):
+        bg = "#1a0a0f" if i % 2 == 0 else "#240e15"
+        html += f"<tr style='background:{bg};'>"
+        for val in row:
+            v = "" if pd.isna(val) else str(val)
+            html += (
+                f"<td style='color:#F5F0E8; padding:6px; "
+                f"border:1px solid rgba(201,169,97,0.15); white-space:nowrap;'>{v}</td>"
+            )
+        html += "</tr>"
+
+    html += "</tbody></table></div>"
+    st.markdown(html, unsafe_allow_html=True)
+
+
+# ============================================================
 # HELPERS
 # ============================================================
 def selector_rango_fechas(key_prefix):
@@ -2043,7 +2080,7 @@ def panel_admin():
                 'Hora Salida': r['hora_salida'].strftime("%H:%M:%S") if r['hora_salida'] else ''
             } for r in regs])
 
-            st.dataframe(df_exp, use_container_width=True, hide_index=True)
+            render_tabla_html(df_exp)
 
             rango_txt = (f"Período: {fd.strftime('%d/%m/%Y')} - {fh.strftime('%d/%m/%Y')}"
                          if fd and fh else "Período: Todo el historial")
@@ -2170,7 +2207,7 @@ def panel_admin():
                 'ID afectado': l['id_afectado'] if l['id_afectado'] else ''
             } for l in logs])
 
-            st.dataframe(df_logs, use_container_width=True, hide_index=True)
+            render_tabla_html(df_logs)
 
             rango_txt = (f"Período: {fd.strftime('%d/%m/%Y')} - {fh.strftime('%d/%m/%Y')}"
                          if fd and fh else "Período: Todo el historial")
@@ -2324,7 +2361,7 @@ def panel_admin():
                                 'Duración': (f"{int(((h['hora_salida'] - h['hora_entrada']).total_seconds())/60)} min"
                                              if h['hora_salida'] else "—")
                             } for h in hist[:30]])
-                            st.dataframe(df_h, use_container_width=True, hide_index=True)
+                            render_tabla_html(df_h)
                             if st.button("❌ Cerrar historial", key=f"cerrar_hist_{v['id']}", use_container_width=True):
                                 st.session_state[f"ver_hist_veh_{v['id']}"] = False
                                 st.rerun()
