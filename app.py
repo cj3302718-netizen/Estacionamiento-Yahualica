@@ -58,7 +58,7 @@ LOGO_ESCUDO_URL = "https://raw.githubusercontent.com/cj3302718-netizen/Estaciona
 
 st.set_page_config(page_title="CUYPARK", page_icon=LOGO_ESCUDO_URL, layout="centered")
 
-APP_VERSION = "v3.0-st.html"
+APP_VERSION = "v4.0-sin-tablas"
 st.session_state["_app_version"] = APP_VERSION
 
 COLOR_VINO = "#7B1B2E"
@@ -150,7 +150,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Marcador de versión visible para verificar despliegue
 st.caption(f"🔧 Versión: {APP_VERSION}")
 
 
@@ -539,48 +538,6 @@ def generar_pdf_reporte(df, titulo, subtitulo=""):
         fill = not fill
 
     return bytes(pdf.output())
-
-
-# ============================================================
-# TABLA HTML PURA usando st.html() - CLAVE PARA EVITAR "None"
-# ============================================================
-def render_tabla_html(df, max_rows=200):
-    """Tabla HTML usando st.html() que NO fragmenta el contenido."""
-    if df is None or df.empty:
-        st.info("No hay datos para mostrar.")
-        return
-
-    html = "<div style='overflow-x:auto; margin:10px 0;'>"
-    html += "<table style='width:100%; border-collapse:collapse; font-size:0.78rem;'>"
-
-    html += "<thead><tr>"
-    for col in df.columns:
-        html += (
-            f"<th style='background:linear-gradient(135deg,#7B1B2E,#D7192D); "
-            f"color:#C9A961; padding:8px 6px; text-align:left; "
-            f"border:1px solid #C9A961; font-weight:700; white-space:nowrap;'>"
-            f"{col}</th>"
-        )
-    html += "</tr></thead><tbody>"
-
-    for i, (_, row) in enumerate(df.head(max_rows).iterrows()):
-        bg = "#1a0a0f" if i % 2 == 0 else "#240e15"
-        html += f"<tr style='background:{bg};'>"
-        for val in row:
-            v = "" if pd.isna(val) else str(val)
-            html += (
-                f"<td style='color:#F5F0E8; padding:6px; "
-                f"border:1px solid rgba(201,169,97,0.15); white-space:nowrap;'>{v}</td>"
-            )
-        html += "</tr>"
-
-    html += "</tbody></table></div>"
-
-    # st.html() no procesa markdown → no genera badges "None"
-    try:
-        st.html(html)
-    except AttributeError:
-        st.markdown(html, unsafe_allow_html=True)
 
 
 # ============================================================
@@ -2075,7 +2032,7 @@ def panel_admin():
         if not regs:
             st.info("No hay registros en el rango seleccionado.")
         else:
-            st.caption(f"**Mostrando {len(regs)} de {total} registro(s)**")
+            st.write(f"**Total de registros: {total}**")
 
             df_exp = pd.DataFrame([{
                 'ID': r['id'],
@@ -2090,8 +2047,6 @@ def panel_admin():
                 'Fecha Salida': r['hora_salida'].strftime("%d/%m/%Y") if r['hora_salida'] else 'En curso',
                 'Hora Salida': r['hora_salida'].strftime("%H:%M:%S") if r['hora_salida'] else ''
             } for r in regs])
-
-            render_tabla_html(df_exp)
 
             rango_txt = (f"Período: {fd.strftime('%d/%m/%Y')} - {fh.strftime('%d/%m/%Y')}"
                          if fd and fh else "Período: Todo el historial")
@@ -2204,7 +2159,7 @@ def panel_admin():
         if not logs:
             st.info("No hay logs que coincidan con los filtros.")
         else:
-            st.write(f"**Mostrando {len(logs)} de {total} registro(s)**")
+            st.write(f"**Total de eventos: {total}**")
 
             df_logs = pd.DataFrame([{
                 'ID': l['id'],
@@ -2217,8 +2172,6 @@ def panel_admin():
                 'Tabla afectada': l['tabla_afectada'] or '',
                 'ID afectado': l['id_afectado'] if l['id_afectado'] else ''
             } for l in logs])
-
-            render_tabla_html(df_logs)
 
             rango_txt = (f"Período: {fd.strftime('%d/%m/%Y')} - {fh.strftime('%d/%m/%Y')}"
                          if fd and fh else "Período: Todo el historial")
@@ -2365,14 +2318,6 @@ def panel_admin():
                                 st.metric("Permanencia prom.", ps)
                             with cc:
                                 st.metric("Estado", "🟢 DENTRO" if act else "🔴 FUERA")
-                            df_h = pd.DataFrame([{
-                                'Fecha': h['hora_entrada'].strftime("%d/%m/%Y %H:%M") if h['hora_entrada'] else "",
-                                'Salida': h['hora_salida'].strftime("%d/%m/%Y %H:%M") if h['hora_salida'] else "En curso",
-                                'Estado': h['estado'],
-                                'Duración': (f"{int(((h['hora_salida'] - h['hora_entrada']).total_seconds())/60)} min"
-                                             if h['hora_salida'] else "—")
-                            } for h in hist[:30]])
-                            render_tabla_html(df_h)
                             if st.button("❌ Cerrar historial", key=f"cerrar_hist_{v['id']}", use_container_width=True):
                                 st.session_state[f"ver_hist_veh_{v['id']}"] = False
                                 st.rerun()
