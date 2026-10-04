@@ -5,14 +5,13 @@ import os
 import tempfile
 import urllib.request
 import threading
+import time
+import math
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, date, timedelta
 from io import BytesIO
-from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
 from fpdf import FPDF
 
 from db import (
@@ -144,63 +143,103 @@ st.markdown("""
 # ============================================================
 # ESCÁNER QR EN TIEMPO REAL
 # ============================================================
+# Segundos que tiene el trabajador para apuntar la cámara al vehículo
+# después de que se lee el QR. Al terminar, la foto se toma sola.
+SEGUNDOS_ESPERA_FOTO = 5
+
 if WEBRTC_DISPONIBLE:
     class QRScannerProcessor(VideoProcessorBase):
-        """Detecta códigos QR automáticamente en tiempo real."""
+        """Lee el QR y, SEGUNDOS_ESPERA_FOTO segundos después, captura la foto de evidencia."""
 
         def __init__(self):
             self.detector = cv2.QRCodeDetector()
-            self._qr = None
             self._lock = threading.Lock()
             self._frame_count = 0
+            self._qr = None
+            self._qr_t = None
+            self._foto = None
 
         def recv(self, frame):
             img = frame.to_ndarray(format="bgr24")
             self._frame_count += 1
-
-            if self._frame_count % 3 == 0:
-                with self._lock:
-                    if self._qr is None:
-                        try:
-                            data, points, _ = self.detector.detectAndDecode(img)
-                            if data and len(data.strip()) > 3:
-                                self._qr = data.strip()
-                        except Exception:
-                            pass
+            h, w = img.shape[:2]
 
             with self._lock:
-                detectado = self._qr is not None
+                qr, qr_t, foto = self._qr, self._qr_t, self._foto
 
-            if detectado:
-                h, w = img.shape[:2]
+            if qr is None:
+                # Fase 1: buscar el QR
+                if self._frame_count % 3 == 0:
+                    try:
+                        data, _, _ = self.detector.detectAndDecode(img)
+                        if data and len(data.strip()) > 3:
+                            with self._lock:
+                                if self._qr is None:
+                                    self._qr = data.strip()
+                                    self._qr_t = time.time()
+                    except Exception:
+                        pass
+
+            elif foto is None:
+                # Fase 2: cuenta regresiva; al llegar a 0 se guarda este fotograma (sin dibujos encima)
+                restante = SEGUNDOS_ESPERA_FOTO - (time.time() - qr_t)
+                if restante <= 0:
+                    ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                    if ok:
+                        with self._lock:
+                            self._foto = buf.tobytes()
+                else:
+                    segs = min(SEGUNDOS_ESPERA_FOTO, math.ceil(restante))
+                    cv2.rectangle(img, (8, 8), (w - 8, h - 8), (0, 200, 255), 6)
+                    cv2.putText(img, "QR OK - Apunta al vehiculo", (25, 50),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+                    cv2.putText(img, str(segs), (w // 2 - 35, h // 2 + 45),
+                                cv2.FONT_HERSHEY_SIMPLEX, 4, (0, 200, 255), 8)
+
+            else:
+                # Fase 3: foto tomada
                 cv2.rectangle(img, (8, 8), (w - 8, h - 8), (0, 255, 0), 6)
-                cv2.putText(img, "QR DETECTADO", (25, 55),
+                cv2.putText(img, "FOTO TOMADA", (25, 55),
                             cv2.FONT_HERSHEY_SIMPLEX, 1.3, (0, 255, 0), 3)
-                cv2.putText(img, "Suelta el codigo...", (25, 95),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 255, 0), 2)
 
             return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-        def pop_qr(self):
+        def estado(self):
+            """Devuelve el QR leído, la foto (bytes JPEG) y los segundos que faltan."""
             with self._lock:
-                qr = self._qr
+                qr, qr_t, foto = self._qr, self._qr_t, self._foto
+            restante = None
+            if qr is not None and qr_t is not None:
+                restante = max(0, math.ceil(SEGUNDOS_ESPERA_FOTO - (time.time() - qr_t)))
+            return {"qr": qr, "foto": foto, "restante": restante}
+
+        def reiniciar(self):
+            with self._lock:
                 self._qr = None
-                return qr
+                self._qr_t = None
+                self._foto = None
 
 
-@st.fragment(run_every="1s")
+@st.fragment(run_every="0.5s")
 def _poll_qr_scanner():
-    """Revisa si el procesador detectó un QR y dispara la transición automática."""
+    """Vigila el escáner: muestra la cuenta regresiva y, cuando ya hay QR + foto, pasa a confirmar."""
     processor = st.session_state.get("qr_processor_ref")
     if processor is None:
         return
-    qr = processor.pop_qr()
-    if qr:
-        st.session_state["qr_escaneado_actual"] = qr
+    estado = processor.estado()
+    if estado["qr"] and estado["foto"]:
+        st.session_state["qr_escaneado_actual"] = estado["qr"]
+        st.session_state["qr_foto_auto"] = estado["foto"]
+        processor.reiniciar()
         try:
             st.rerun(scope="app")
         except TypeError:
             st.rerun()
+    elif estado["qr"]:
+        st.success(
+            f"✅ QR leído. 📸 Apunta la cámara al vehículo: "
+            f"la foto se toma sola en **{estado['restante']} s**"
+        )
 
 
 def _mostrar_datos_qr_escaneado(user, qr_raw):
@@ -220,6 +259,7 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
         if st.button("🔄 Volver a escanear", use_container_width=True, key="qr_reset_1"):
             st.session_state["qr_escaneado_actual"] = None
             st.session_state["qr_processor_ref"] = None
+            st.session_state["qr_foto_auto"] = None
             st.rerun()
         return
 
@@ -244,6 +284,7 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
         if st.button("🔄 Volver a escanear", use_container_width=True, key="qr_reset_2"):
             st.session_state["qr_escaneado_actual"] = None
             st.session_state["qr_processor_ref"] = None
+            st.session_state["qr_foto_auto"] = None
             st.rerun()
         return
 
@@ -289,11 +330,25 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
     registro_activo = obtener_registro_activo_por_vehiculo(vehiculo['id'])
     accion = "SALIDA" if registro_activo else "ENTRADA"
 
-    st.markdown(f"### 📸 Toma foto de evidencia — {accion}")
-    foto_evidencia = st.camera_input(
-        "📸 Foto del vehículo (obligatoria)",
-        key=f"cam_evidencia_qr_{vehiculo['id']}_{accion}"
-    )
+    foto_auto = st.session_state.get("qr_foto_auto")
+    foto_bytes = foto_auto
+    if foto_auto:
+        st.markdown(f"### 📸 Foto de evidencia — {accion}")
+        st.image(foto_auto, caption="Foto tomada automáticamente", use_container_width=True)
+        with st.expander("🔁 Tomar otra foto manualmente"):
+            foto_manual = st.camera_input(
+                "📸 Nueva foto del vehículo",
+                key=f"cam_evidencia_qr_manual_{vehiculo['id']}_{accion}"
+            )
+        if foto_manual:
+            foto_bytes = foto_manual.getvalue()
+    else:
+        # Entrada manual de placas (sin escáner): la foto se toma con el botón de la cámara
+        foto_evidencia = st.camera_input(
+            "📸 Foto del vehículo (obligatoria)",
+            key=f"cam_evidencia_qr_{vehiculo['id']}_{accion}"
+        )
+        foto_bytes = foto_evidencia.getvalue() if foto_evidencia else None
 
     st.markdown(f"### ✅ Confirmar {accion}")
 
@@ -313,13 +368,13 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
         col_a, col_b = st.columns(2)
         with col_a:
             if st.button("🚪 Registrar SALIDA", type="primary", use_container_width=True, key="btn_salida_qr"):
-                if not foto_evidencia:
+                if not foto_bytes:
                     st.error("❌ Debes tomar la foto de evidencia.")
                 else:
                     with st.spinner("💾 Registrando salida..."):
                         registrar_salida(
                             registro_activo['id'], vehiculo['tipo'], user['id'],
-                            imagen_a_base64(foto_evidencia.getvalue())
+                            imagen_a_base64(foto_bytes)
                         )
                         registrar_log(
                             user['id'], "REGISTRAR_SALIDA",
@@ -328,12 +383,14 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
                         )
                     st.session_state["qr_escaneado_actual"] = None
                     st.session_state["qr_processor_ref"] = None
+                    st.session_state["qr_foto_auto"] = None
                     set_flash("success", f"✅ Salida registrada para {vehiculo['placas']}.")
                     st.rerun()
         with col_b:
             if st.button("❌ Cancelar", use_container_width=True, key="btn_cancel_qr_salida"):
                 st.session_state["qr_escaneado_actual"] = None
                 st.session_state["qr_processor_ref"] = None
+                st.session_state["qr_foto_auto"] = None
                 st.rerun()
     else:
         st.info("🔵 **NO** está dentro. Se registrará **ENTRADA**.")
@@ -341,13 +398,13 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
         col_a, col_b = st.columns(2)
         with col_a:
             if st.button("🚗 Registrar ENTRADA", type="primary", use_container_width=True, key="btn_entrada_qr"):
-                if not foto_evidencia:
+                if not foto_bytes:
                     st.error("❌ Debes tomar la foto de evidencia.")
                 else:
                     with st.spinner("💾 Registrando entrada..."):
                         registrar_entrada(
                             vehiculo['id_usuario'], vehiculo['id'], vehiculo['tipo'],
-                            user['id'], imagen_a_base64(foto_evidencia.getvalue())
+                            user['id'], imagen_a_base64(foto_bytes)
                         )
                         registrar_log(
                             user['id'], "REGISTRAR_ENTRADA",
@@ -356,12 +413,14 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
                         )
                     st.session_state["qr_escaneado_actual"] = None
                     st.session_state["qr_processor_ref"] = None
+                    st.session_state["qr_foto_auto"] = None
                     set_flash("success", f"✅ Entrada registrada para {vehiculo['placas']}.")
                     st.rerun()
         with col_b:
             if st.button("❌ Cancelar", use_container_width=True, key="btn_cancel_qr_entrada"):
                 st.session_state["qr_escaneado_actual"] = None
                 st.session_state["qr_processor_ref"] = None
+                st.session_state["qr_foto_auto"] = None
                 st.rerun()
 
 
@@ -432,76 +491,8 @@ def _seccion_escaner_qr(user):
 
 
 # ============================================================
-# HELPERS: EXCEL / PDF
+# HELPERS: PDF
 # ============================================================
-def exportar_excel_profesional(df, titulo_reporte, subtitulo_extra=""):
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Reporte"
-
-    header_fill = PatternFill(start_color="7B1B2E", end_color="7B1B2E", fill_type="solid")
-    header_font = Font(bold=True, color="FFFFFF", size=11)
-    header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    title_font = Font(bold=True, size=16, color="7B1B2E")
-    sub_font = Font(italic=True, size=9, color="666666")
-    border_thin = Side(style='thin', color='BFBFBF')
-    border = Border(left=border_thin, right=border_thin, top=border_thin, bottom=border_thin)
-    alt_fill = PatternFill(start_color="F5F0E8", end_color="F5F0E8", fill_type="solid")
-    data_align = Alignment(vertical="center", wrap_text=False)
-
-    total_cols = len(df.columns)
-
-    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=total_cols)
-    title_cell = ws.cell(row=1, column=1, value=titulo_reporte)
-    title_cell.font = title_font
-    title_cell.alignment = Alignment(horizontal="left", vertical="center")
-    ws.row_dimensions[1].height = 24
-
-    ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=total_cols)
-    sub_text = f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}  |  CUYPARK - Colegio Universitario de Yahualica"
-    if subtitulo_extra:
-        sub_text += f"  |  {subtitulo_extra}"
-    sub_cell = ws.cell(row=2, column=1, value=sub_text)
-    sub_cell.font = sub_font
-    sub_cell.alignment = Alignment(horizontal="left", vertical="center")
-    ws.row_dimensions[3].height = 6
-
-    header_row = 4
-    for col_idx, col_name in enumerate(df.columns, start=1):
-        cell = ws.cell(row=header_row, column=col_idx, value=str(col_name))
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = header_align
-        cell.border = border
-    ws.row_dimensions[header_row].height = 22
-
-    for row_idx, row in enumerate(df.itertuples(index=False), start=header_row + 1):
-        for col_idx, value in enumerate(row, start=1):
-            if pd.isna(value) if not isinstance(value, (list, dict)) else False:
-                value = ""
-            cell = ws.cell(row=row_idx, column=col_idx, value=value)
-            cell.border = border
-            cell.alignment = data_align
-            if (row_idx - header_row) % 2 == 0:
-                cell.fill = alt_fill
-
-    for col_idx, col_name in enumerate(df.columns, start=1):
-        max_len = len(str(col_name))
-        for row_idx in range(header_row + 1, ws.max_row + 1):
-            val = ws.cell(row=row_idx, column=col_idx).value
-            if val is not None:
-                max_len = max(max_len, len(str(val)))
-        ws.column_dimensions[get_column_letter(col_idx)].width = min(max_len + 4, 45)
-
-    ws.freeze_panes = ws.cell(row=header_row + 1, column=1)
-    ws.auto_filter.ref = f"A{header_row}:{get_column_letter(total_cols)}{ws.max_row}"
-
-    buffer = BytesIO()
-    wb.save(buffer)
-    buffer.seek(0)
-    return buffer.getvalue()
-
-
 def generar_pdf_reporte(df, titulo, subtitulo=""):
     class PDF(FPDF):
         def header(self):
@@ -1025,6 +1016,8 @@ if 'qr_escaneado_actual' not in st.session_state:
     st.session_state.qr_escaneado_actual = None
 if 'qr_processor_ref' not in st.session_state:
     st.session_state.qr_processor_ref = None
+if 'qr_foto_auto' not in st.session_state:
+    st.session_state.qr_foto_auto = None
 
 if 'tabla_mensajes_ok' not in st.session_state:
     try:
@@ -1140,6 +1133,7 @@ def cerrar_sesion():
     st.session_state.flash = None
     st.session_state.qr_escaneado_actual = None
     st.session_state.qr_processor_ref = None
+    st.session_state.qr_foto_auto = None
     st.rerun()
 
 
@@ -1628,7 +1622,7 @@ def panel_alumno():
                                 marcar_mensaje_leido(m['id'])
                                 st.rerun()
 
-    st.markdown("### 🅿️ Lugares disponibles")
+    st.markdown("Lugares disponibles")
     st.caption("🟢 Actualizándose en tiempo real (cada 15s)")
     _contadores_alumno()
     st.markdown("---")
@@ -2299,25 +2293,14 @@ def panel_admin():
             rango_txt = (f"Período: {fecha_desde.strftime('%d/%m/%Y')} - {fecha_hasta.strftime('%d/%m/%Y')}"
                          if fecha_desde and fecha_hasta else "Período: Todo el historial")
 
-            col_a, col_b = st.columns(2)
-            with col_a:
-                with st.spinner("📊 Generando Excel..."):
-                    excel_data = exportar_excel_profesional(
-                        df_export, "Reporte de Registros de Estacionamiento",
-                        f"{rango_txt} | Total: {total} registro(s)")
-                st.download_button("📊 Excel", data=excel_data,
-                    file_name=f"registros_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True, key="dl_reg_xlsx")
-            with col_b:
-                with st.spinner("📄 Generando PDF..."):
-                    pdf_data = generar_pdf_reporte(
-                        df_export, "Reporte de Registros",
-                        f"{rango_txt} | Página {pagina}")
-                st.download_button("📄 PDF", data=pdf_data,
-                    file_name=f"registros_{datetime.now().strftime('%Y%m%d')}.pdf",
-                    mime="application/pdf",
-                    use_container_width=True, type="primary", key="dl_reg_pdf")
+            with st.spinner("📄 Generando PDF..."):
+                pdf_data = generar_pdf_reporte(
+                    df_export, "Reporte de Registros",
+                    f"{rango_txt} | Página {pagina}")
+            st.download_button("📄 Descargar Reporte PDF", data=pdf_data,
+                file_name=f"registros_{datetime.now().strftime('%Y%m%d')}.pdf",
+                mime="application/pdf",
+                use_container_width=True, type="primary", key="dl_reg_pdf")
 
             st.markdown("---")
 
@@ -2434,25 +2417,14 @@ def panel_admin():
             rango_txt = (f"Período: {fecha_desde.strftime('%d/%m/%Y')} - {fecha_hasta.strftime('%d/%m/%Y')}"
                          if fecha_desde and fecha_hasta else "Período: Todo el historial")
 
-            col_a, col_b = st.columns(2)
-            with col_a:
-                with st.spinner("📊 Generando Excel..."):
-                    excel_data = exportar_excel_profesional(
-                        df_logs, "Reporte de Auditoría del Sistema",
-                        f"{rango_txt} | Total: {total} evento(s)")
-                st.download_button("📊 Excel", data=excel_data,
-                    file_name=f"auditoria_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True, key="dl_aud_xlsx")
-            with col_b:
-                with st.spinner("📄 Generando PDF..."):
-                    pdf_data = generar_pdf_reporte(
-                        df_logs, "Reporte de Auditoría",
-                        f"{rango_txt} | Página {pagina}")
-                st.download_button("📄 PDF", data=pdf_data,
-                    file_name=f"auditoria_{datetime.now().strftime('%Y%m%d')}.pdf",
-                    mime="application/pdf",
-                    use_container_width=True, type="primary", key="dl_aud_pdf")
+            with st.spinner("📄 Generando PDF..."):
+                pdf_data = generar_pdf_reporte(
+                    df_logs, "Reporte de Auditoría",
+                    f"{rango_txt} | Página {pagina}")
+            st.download_button("📄 Descargar Reporte PDF", data=pdf_data,
+                file_name=f"auditoria_{datetime.now().strftime('%Y%m%d')}.pdf",
+                mime="application/pdf",
+                use_container_width=True, type="primary", key="dl_aud_pdf")
 
             st.markdown("---")
 
