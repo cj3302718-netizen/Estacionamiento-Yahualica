@@ -41,6 +41,12 @@ from db import (
     obtener_vehiculos_alerta,
     crear_tabla_mensajes, crear_indices,
     listar_todas_las_placas,
+    # === NUEVAS FUNCIONES v2 ===
+    obtener_token_qr, regenerar_token_qr, verificar_token_qr,
+    generar_placas_temporales,
+    registrar_entrada_manual, registrar_salida_manual,
+    obtener_registros_manuales, contar_registros_manuales_pendientes,
+    validar_registro_manual, obtener_vehiculos_manuales_dentro,
 )
 
 try:
@@ -143,9 +149,6 @@ st.markdown("""
 # ============================================================
 # ESCÁNER QR EN TIEMPO REAL
 # ============================================================
-# Modo del escáner:
-#   "navegador" -> el QR se lee dentro del navegador (carpeta qr_scanner/). No necesita TURN ni cuentas.
-#   "webrtc"    -> el video viaja al servidor (requiere servidor TURN en Streamlit Cloud).
 ESCANER_MODO = "navegador"
 
 try:
@@ -158,8 +161,6 @@ try:
 except Exception:
     _qr_scanner_comp = None
 
-# Segundos que tiene el trabajador para apuntar la cámara al vehículo
-# después de que se lee el QR. Al terminar, la foto se toma sola.
 SEGUNDOS_ESPERA_FOTO = 5
 
 if WEBRTC_DISPONIBLE:
@@ -183,7 +184,6 @@ if WEBRTC_DISPONIBLE:
                 qr, qr_t, foto = self._qr, self._qr_t, self._foto
 
             if qr is None:
-                # Fase 1: buscar el QR
                 if self._frame_count % 3 == 0:
                     try:
                         data, _, _ = self.detector.detectAndDecode(img)
@@ -196,7 +196,6 @@ if WEBRTC_DISPONIBLE:
                         pass
 
             elif foto is None:
-                # Fase 2: cuenta regresiva; al llegar a 0 se guarda este fotograma (sin dibujos encima)
                 restante = SEGUNDOS_ESPERA_FOTO - (time.time() - qr_t)
                 if restante <= 0:
                     ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 85])
@@ -212,7 +211,6 @@ if WEBRTC_DISPONIBLE:
                                 cv2.FONT_HERSHEY_SIMPLEX, 4, (0, 200, 255), 8)
 
             else:
-                # Fase 3: foto tomada
                 cv2.rectangle(img, (8, 8), (w - 8, h - 8), (0, 255, 0), 6)
                 cv2.putText(img, "FOTO TOMADA", (25, 55),
                             cv2.FONT_HERSHEY_SIMPLEX, 1.3, (0, 255, 0), 3)
@@ -220,7 +218,6 @@ if WEBRTC_DISPONIBLE:
             return av.VideoFrame.from_ndarray(img, format="bgr24")
 
         def estado(self):
-            """Devuelve el QR leído, la foto (bytes JPEG) y los segundos que faltan."""
             with self._lock:
                 qr, qr_t, foto = self._qr, self._qr_t, self._foto
             restante = None
@@ -237,7 +234,6 @@ if WEBRTC_DISPONIBLE:
 
 @st.fragment(run_every="0.5s")
 def _poll_qr_scanner():
-    """Vigila el escáner: muestra la cuenta regresiva y, cuando ya hay QR + foto, pasa a confirmar."""
     processor = st.session_state.get("qr_processor_ref")
     if processor is None:
         return
@@ -303,6 +299,18 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
             st.rerun()
         return
 
+    # === VALIDACIÓN DEL TOKEN DEL QR ===
+    token_qr = data.get("token") if isinstance(data, dict) else None
+    if token_qr and not verificar_token_qr(vehiculo['id'], token_qr):
+        st.error("❌ **QR INVÁLIDO.** Este código fue regenerado o revocado por el alumno.")
+        st.caption("El alumno debe descargar su QR actualizado desde la app.")
+        if st.button("🔄 Volver a escanear", use_container_width=True, key="qr_token_invalid"):
+            st.session_state["qr_escaneado_actual"] = None
+            st.session_state["qr_processor_ref"] = None
+            st.session_state["qr_foto_auto"] = None
+            st.rerun()
+        return
+
     # --- Datos del alumno encontrado ---
     st.success("✅ **QR detectado correctamente**")
     st.markdown("### 👤 Datos del alumno")
@@ -358,7 +366,6 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
         if foto_manual:
             foto_bytes = foto_manual.getvalue()
     else:
-        # Entrada manual de placas (sin escáner): la foto se toma con el botón de la cámara
         foto_evidencia = st.camera_input(
             "📸 Foto del vehículo (obligatoria)",
             key=f"cam_evidencia_qr_{vehiculo['id']}_{accion}"
@@ -377,6 +384,16 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
             st.error(f"🚨 Este vehículo lleva **{horas_dentro:.1f}h** dentro. Verifica antes de registrar salida.")
         elif horas_dentro >= 8:
             st.warning(f"⚠️ Este vehículo lleva **{horas_dentro:.1f}h** dentro.")
+
+        # === FOTO DE ENTRADA PARA COMPARAR ===
+        ev_entrada = registro_activo.get('evidencia_entrada')
+        if ev_entrada:
+            with st.expander("🖼️ Comparar con la foto de ENTRADA (verificar conductor y vehículo)"):
+                img_in = base64_a_bytes(ev_entrada)
+                if img_in:
+                    st.image(img_in,
+                             caption=f"Foto tomada al ENTRAR ({registro_activo['hora_entrada']})",
+                             use_container_width=True)
 
         st.info(f"🟢 Está **DENTRO** desde {registro_activo['hora_entrada']}. Se registrará **SALIDA**.")
 
@@ -441,7 +458,6 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
 
 @st.cache_resource(ttl=3600, show_spinner=False)
 def _ice_metered():
-    """Credenciales TURN de Metered (Open Relay). Si falla, lanza error y no se guarda en caché."""
     app_name = st.secrets["metered_app"]
     api_key = st.secrets["metered_api_key"]
     url = f"https://{app_name}.metered.live/api/v1/turn/credentials?apiKey={api_key}"
@@ -454,18 +470,12 @@ def _ice_metered():
 
 @st.cache_resource(ttl=3600, show_spinner=False)
 def _ice_twilio():
-    """Credenciales TURN de Twilio (requiere `twilio` en requirements.txt)."""
     from twilio.rest import Client
     token = Client(st.secrets["twilio_account_sid"], st.secrets["twilio_auth_token"]).tokens.create()
     return token.ice_servers
 
 
 def obtener_ice_servers():
-    """Lista de servidores STUN/TURN para la cámara en vivo.
-
-    Streamlit Cloud necesita un servidor TURN para que el video conecte.
-    Se prueba Metered, luego Twilio, y si ninguno está configurado se usa solo STUN.
-    """
     for obtener in (_ice_metered, _ice_twilio):
         try:
             servers = obtener()
@@ -487,7 +497,7 @@ def _hay_turn(servers):
 
 
 def _seccion_escaner_qr(user):
-    """Sección de escaneo QR automático en vivo (con fallback manual)."""
+    """Sección de escaneo QR automático en vivo (con fallback manual y entrada sin identificación)."""
 
     if st.session_state.get("qr_escaneado_actual"):
         _mostrar_datos_qr_escaneado(user, st.session_state["qr_escaneado_actual"])
@@ -553,21 +563,106 @@ def _seccion_escaner_qr(user):
         st.caption("Instala `streamlit-webrtc` y `av`, o usa la entrada manual de placas.")
 
     st.markdown("---")
-    with st.expander("⌨️ Ingresar placas manualmente", expanded=not (usar_navegador or WEBRTC_DISPONIBLE)):
-        st.caption("Úsalo si la cámara no funciona o si el QR no se puede leer.")
-        col_in, col_btn = st.columns([3, 1])
-        with col_in:
-            placas_manual = st.text_input(
-                "Placas", key="placas_manual_qr",
-                placeholder="Ej. ABC-1234", label_visibility="collapsed"
-            ).upper().strip()
-        with col_btn:
-            if st.button("🔍 Buscar", use_container_width=True, key="btn_buscar_manual"):
-                if placas_manual:
-                    st.session_state["qr_escaneado_actual"] = json.dumps({"placas": placas_manual})
-                    st.rerun()
+    tabs = st.tabs(["⌨️ Buscar por datos", "🆘 Entrada sin identificación"])
+
+    # --------- TAB 1: BÚSQUEDA AMPLIADA ---------
+    with tabs[0]:
+        st.caption("Busca por placas, nombre, matrícula o ID de estudiante. "
+                   "Confirma la identidad con credencial escolar u oficial.")
+        termino = st.text_input("Buscar vehículo", key="busqueda_amplia_qr",
+                                 placeholder="Ej. ABC-1234, Juan Pérez, 20231234, ALU-0001").strip()
+        if termino:
+            with st.spinner("Buscando..."):
+                resultados = buscar_vehiculos_admin(termino, limite=15)
+            if not resultados:
+                st.warning("Sin coincidencias. Si el vehículo no está registrado, "
+                           "usa la pestaña **🆘 Entrada sin identificación**.")
+            else:
+                st.caption(f"**{len(resultados)}** resultado(s):")
+                for r in resultados:
+                    icono = "🚗" if r['tipo'] == 'Auto' else "🏍️"
+                    with st.container(border=True):
+                        c1, c2 = st.columns([4, 1])
+                        with c1:
+                            st.markdown(f"**{icono} {r['placas']}** — {r['nombre_completo']}")
+                            st.caption(f"Matrícula: {r['matricula'] or 'N/A'} · "
+                                       f"ID: {r['id_estudiante'] or 'N/A'} · @{r['usuario']}")
+                        with c2:
+                            if st.button("Seleccionar", key=f"sel_veh_{r['id']}",
+                                         use_container_width=True):
+                                st.session_state["qr_escaneado_actual"] = json.dumps(
+                                    {"placas": r['placas']}
+                                )
+                                st.rerun()
+
+    # --------- TAB 2: ENTRADA SIN IDENTIFICACIÓN ---------
+    with tabs[1]:
+        st.warning("⚠️ Usa este formulario solo si la persona **no tiene identificación**. "
+                   "Quedará marcado como **pendiente de validación** por el administrador.")
+        with st.form("form_entrada_manual", clear_on_submit=False):
+            nombre_vis = st.text_input("Nombre (o descripción) de quien ingresa *")
+            tipo_id = st.selectbox("Identificación mostrada",
+                                    ["Ninguna", "Credencial escolar", "INE", "Licencia",
+                                     "Pasaporte", "Otro"])
+            motivo = st.text_area("Motivo por el que se autoriza *", height=80,
+                                   placeholder="Ej. Padre de familia, entrega de documentos…")
+            tipo_v = st.selectbox("Tipo de vehículo", ["Auto", "Moto"])
+            tiene_placas = st.checkbox("El vehículo tiene placas visibles")
+            placas_man = st.text_input("Placas", key="em_placas").upper().strip() if tiene_placas else ""
+            col_a, col_b, col_c = st.columns(3)
+            with col_a: marca_man = st.text_input("Marca (opcional)", key="em_marca")
+            with col_b: modelo_man = st.text_input("Modelo (opcional)", key="em_modelo")
+            with col_c: color_man = st.text_input("Color (opcional)", key="em_color")
+            foto_man = st.camera_input("📸 Foto de evidencia (obligatoria)", key="em_foto")
+
+            enviado = st.form_submit_button("🆘 Registrar entrada manual",
+                                              type="primary", use_container_width=True)
+            if enviado:
+                if not nombre_vis.strip() or not motivo.strip():
+                    st.error("Completa nombre y motivo.")
+                elif not foto_man:
+                    st.error("La foto de evidencia es obligatoria.")
                 else:
-                    st.error("Ingresa las placas.")
+                    with st.spinner("Guardando entrada manual..."):
+                        registrar_entrada_manual(
+                            nombre=nombre_vis.strip(),
+                            tipo_id=tipo_id,
+                            motivo=motivo.strip(),
+                            placas=placas_man or None,
+                            marca=marca_man.strip() or None,
+                            modelo=modelo_man.strip() or None,
+                            color=color_man.strip() or None,
+                            tipo_vehiculo=tipo_v,
+                            id_trabajador=user['id'],
+                            evidencia_b64=imagen_a_base64(foto_man.getvalue())
+                        )
+                        registrar_log(user['id'], "ENTRADA_MANUAL",
+                                      f"Entrada manual autorizada por @{user['usuario']} — {nombre_vis.strip()}",
+                                      "Super_Registros_Manuales")
+
+                        try:
+                            admins = obtener_todos_usuarios("admin", solo_activos=True)
+                            for adm in admins:
+                                enviar_mensaje(
+                                    user['id'],
+                                    "🚨 Entrada manual sin identificación",
+                                    f"El trabajador @{user['usuario']} registró una entrada manual.\n\n"
+                                    f"• Persona: {nombre_vis.strip()}\n"
+                                    f"• Identificación: {tipo_id}\n"
+                                    f"• Motivo: {motivo.strip()}\n"
+                                    f"• Vehículo: {tipo_v} {placas_man or '(sin placas)'}\n\n"
+                                    f"Valídala desde **Registros Manuales**.",
+                                    adm['id'], "alerta"
+                                )
+                        except Exception:
+                            pass
+
+                    limpiar_campos(["em_placas", "em_marca", "em_modelo",
+                                    "em_color", "em_foto"])
+                    set_flash("success",
+                              f"✅ Entrada manual registrada para {nombre_vis.strip()}. "
+                              "Se notificó al administrador.")
+                    st.rerun()
 
 
 # ============================================================
@@ -1573,6 +1668,64 @@ def _dashboard_datos_vivo():
 
 
 def _render_lista_vehiculos_dentro(user):
+    # ==== VEHÍCULOS CON ENTRADA MANUAL (SIN IDENTIFICACIÓN) ====
+    manuales = obtener_vehiculos_manuales_dentro()
+    if manuales:
+        st.markdown(f"#### 🆘 Vehículos con entrada manual ({len(manuales)})")
+        for m in manuales:
+            with st.container(border=True):
+                icono = "🚗" if m['tipo_vehiculo'] == 'Auto' else "🏍️"
+                st.markdown(f"**{icono} {m['placas'] or '(sin placas)'}** — "
+                            f"{m['nombre_visitante']}")
+                st.caption(f"Entrada: {m['hora_entrada']} · Autorizó: "
+                           f"{m['trabajador_nombre']}")
+                st.caption(f"{m['marca'] or '—'} {m['modelo'] or ''} "
+                           f"{m['color'] or ''}".strip())
+
+                if m['evidencia_entrada']:
+                    with st.expander("📸 Ver foto de entrada"):
+                        img = base64_a_bytes(m['evidencia_entrada'])
+                        if img:
+                            st.image(img, use_container_width=True)
+
+                if st.button("🚪 Registrar salida manual",
+                             key=f"sal_manual_{m['id_registro']}",
+                             use_container_width=True):
+                    st.session_state[f"sal_manual_activo_{m['id_registro']}"] = True
+                    st.rerun()
+
+            if st.session_state.get(f"sal_manual_activo_{m['id_registro']}", False):
+                foto_sal = st.camera_input(
+                    f"📸 Evidencia de salida — {m['placas'] or m['nombre_visitante']}",
+                    key=f"cam_sal_man_{m['id_registro']}"
+                )
+                c1, c2 = st.columns(2)
+                with c1:
+                    if st.button("✅ Confirmar", key=f"conf_sal_man_{m['id_registro']}",
+                                 type="primary", use_container_width=True):
+                        if not foto_sal:
+                            st.error("Toma la foto de evidencia.")
+                        else:
+                            with st.spinner("Guardando salida..."):
+                                registrar_salida_manual(
+                                    m['id_registro'], user['id'],
+                                    imagen_a_base64(foto_sal.getvalue())
+                                )
+                                registrar_log(user['id'], "SALIDA_MANUAL",
+                                              f"Salida manual de {m['nombre_visitante']}",
+                                              "Super_Registros_Manuales", m['id_registro'])
+                            st.session_state[f"sal_manual_activo_{m['id_registro']}"] = False
+                            set_flash("success", "✅ Salida manual registrada.")
+                            st.rerun()
+                with c2:
+                    if st.button("❌ Cancelar", key=f"canc_sal_man_{m['id_registro']}",
+                                 use_container_width=True):
+                        st.session_state[f"sal_manual_activo_{m['id_registro']}"] = False
+                        st.rerun()
+
+        st.markdown("---")
+
+    # ==== BÚSQUEDA DE VEHÍCULOS REGISTRADOS ====
     buscar = st.text_input("🔍 Buscar vehículo (placas, nombre o matrícula)",
                            key="buscar_dentro_caseta",
                            placeholder="Ej. ABC-1234 o Juan Pérez")
@@ -1746,15 +1899,21 @@ def panel_alumno():
                 with col1:
                     if st.button("🎫 QR", key=f"qr_{v['id']}", use_container_width=True):
                         with st.spinner("🎫 Generando QR..."):
+                            token = obtener_token_qr(user['id'])
+                            if not token:
+                                token = regenerar_token_qr(user['id'])
                             qr_data = {
                                 "id_usuario": user['id'], "usuario": user['usuario'],
                                 "nombre": user['nombre_completo'], "id_estudiante": user['id_estudiante'],
                                 "matricula": user['matricula'], "carrera": user['carrera'],
                                 "grupo": user['grupo'], "id_vehiculo": v['id'],
-                                "tipo": v['tipo'], "placas": v['placas']
+                                "tipo": v['tipo'], "placas": v['placas'],
+                                "token": token,
                             }
-                            st.session_state.qr_generado = {"imagen": generar_qr_imagen(qr_data),
-                                                            "vehiculo": v, "datos": qr_data}
+                            st.session_state.qr_generado = {
+                                "imagen": generar_qr_imagen(qr_data),
+                                "vehiculo": v, "datos": qr_data
+                            }
                         st.rerun()
                 with col2:
                     st.button("🗑️ Borrar", key=f"del_{v['id']}", use_container_width=True,
@@ -1849,33 +2008,58 @@ def panel_alumno():
 
     with st.expander("➕ Registrar nuevo vehículo"):
         st.markdown("**Tipo de vehículo**")
-        tipo = st.selectbox("Tipo de vehículo", ["Auto", "Moto"], key="vh_tipo", label_visibility="collapsed")
-        placas = st.text_input("Placas", key="vh_placas", placeholder="Ej. ABC-1234").upper().strip()
-        placas_ok = mostrar_validacion(placas, validar_placas, obligatorio=True)
+        tipo = st.selectbox("Tipo", ["Auto", "Moto"], key="vh_tipo",
+                            label_visibility="collapsed")
+
+        sin_placas = st.checkbox("El vehículo aún no tiene placas (en trámite)",
+                                 key="vh_sin_placas")
+
+        if sin_placas:
+            st.info("Se generará un identificador interno **TEMP-XXXX**. "
+                    "Podrás actualizar las placas después.")
+            identificador = st.text_input(
+                "Últimos dígitos del número de serie / VIN (opcional)",
+                key="vh_vin"
+            )
+            placas = generar_placas_temporales()
+            placas_ok = True
+            placas_unicas = True
+        else:
+            placas = st.text_input("Placas", key="vh_placas",
+                                    placeholder="Ej. ABC-1234").upper().strip()
+            placas_ok = mostrar_validacion(placas, validar_placas, obligatorio=True)
+            placas_unicas = True
+            if placas and placas_ok and placas_existen(placas.replace("-", "").replace(" ", "")):
+                st.markdown('<div class="val-error">❌ Ya existe un vehículo con esas placas</div>',
+                            unsafe_allow_html=True)
+                placas_unicas = False
+            identificador = None
+
         marca = st.text_input("Marca (opcional)", key="vh_marca")
         modelo = st.text_input("Modelo (opcional)", key="vh_modelo")
         color = st.text_input("Color (opcional)", key="vh_color")
-
-        placas_unicas = True
-        if placas and placas_ok:
-            placas_limpias_temp = placas.replace("-", "").replace(" ", "").upper()
-            if placas_existen(placas_limpias_temp):
-                st.markdown('<div class="val-error">❌ Ya existe un vehículo con esas placas</div>', unsafe_allow_html=True)
-                placas_unicas = False
 
         todos_ok = placas_ok and placas_unicas
         if st.button("Registrar vehículo", use_container_width=True, type="primary",
                      disabled=not todos_ok, key="vh_btn"):
             placas_limpias = placas.replace("-", "").replace(" ", "").upper()
             try:
-                with st.spinner("💾 Registrando vehículo..."):
-                    crear_vehiculo(user['id'], tipo, placas_limpias,
-                                   marca.strip() if marca else None,
-                                   modelo.strip() if modelo else None,
-                                   color.strip() if color else None)
+                with st.spinner("Registrando vehículo..."):
+                    crear_vehiculo(
+                        user['id'], tipo, placas_limpias,
+                        marca.strip() if marca else None,
+                        modelo.strip() if modelo else None,
+                        color.strip() if color else None,
+                        es_tramite=1 if sin_placas else 0,
+                        identificador_alterno=(identificador.strip()
+                                               if sin_placas and identificador else None)
+                    )
                     registrar_log(user['id'], "CREAR_VEHICULO",
-                                  f"Vehículo {tipo} {placas_limpias} registrado", "Super_Vehiculos")
-                limpiar_campos(['vh_placas', 'vh_marca', 'vh_modelo', 'vh_color'])
+                                  f"Vehículo {tipo} {placas_limpias} registrado"
+                                  + (" (en trámite)" if sin_placas else ""),
+                                  "Super_Vehiculos")
+                limpiar_campos(['vh_placas', 'vh_marca', 'vh_modelo', 'vh_color',
+                                'vh_vin', 'vh_sin_placas'])
                 set_flash("success", f"✅ Vehículo {placas_limpias} registrado correctamente.")
                 st.rerun()
             except Exception as e:
@@ -1885,15 +2069,19 @@ def panel_alumno():
         qr_info = st.session_state.qr_generado
         st.markdown("---")
         st.markdown("### 🎫 Tu código QR")
-        st.info("Presenta este código en la caseta al entrar y salir.")
+        st.info("Presenta este código en la caseta. Si pierdes el celular, "
+                "usa **Regenerar** para invalidar el anterior.")
+
         _, col_qr, _ = st.columns([1, 2, 1])
         with col_qr:
-            st.image(qr_info['imagen'], caption=f"QR — {qr_info['vehiculo']['tipo']} {qr_info['vehiculo']['placas']}")
+            st.image(qr_info['imagen'],
+                     caption=f"QR — {qr_info['vehiculo']['tipo']} {qr_info['vehiculo']['placas']}")
 
         col_dl1, col_dl2 = st.columns(2)
         with col_dl1:
             st.download_button("📥 Descargar PNG", data=qr_info['imagen'],
-                file_name=f"QR_{qr_info['vehiculo']['placas']}.png", mime="image/png", use_container_width=True)
+                file_name=f"QR_{qr_info['vehiculo']['placas']}.png", mime="image/png",
+                use_container_width=True)
         with col_dl2:
             try:
                 with st.spinner("📄 Generando PDF profesional..."):
@@ -1904,9 +2092,22 @@ def panel_alumno():
             except Exception as e:
                 st.error(f"Error al generar el PDF: {e}")
 
-        if st.button("❌ Cerrar QR", use_container_width=True):
-            st.session_state.qr_generado = None
-            st.rerun()
+        col_r1, col_r2 = st.columns(2)
+        with col_r1:
+            if st.button("🔁 Regenerar QR (invalidar anterior)",
+                         use_container_width=True, key="btn_regen_qr"):
+                with st.spinner("Regenerando..."):
+                    regenerar_token_qr(user['id'])
+                    registrar_log(user['id'], "REGENERAR_QR",
+                                  f"@{user['usuario']} regeneró su token QR",
+                                  "Super_Usuarios", user['id'])
+                st.session_state.qr_generado = None
+                set_flash("success", "✅ Token renovado. El QR anterior ya no funciona.")
+                st.rerun()
+        with col_r2:
+            if st.button("❌ Cerrar QR", use_container_width=True, key="btn_cerrar_qr"):
+                st.session_state.qr_generado = None
+                st.rerun()
 
 
 # ============================================================
@@ -1958,7 +2159,8 @@ def panel_admin():
     seccion = st.radio(
         "Sección:",
         ["📊 Dashboard", "👥 Usuarios", "📋 Registros", "📈 Métricas",
-         "🔍 Auditoría", "💬 Mensajes", "🚗 Vehículos", "🔧 Mi Cuenta"],
+         "🔍 Auditoría", "💬 Mensajes", "🚗 Vehículos",
+         "🆘 Registros Manuales", "🔧 Mi Cuenta"],
         horizontal=True, label_visibility="collapsed"
     )
 
@@ -2520,6 +2722,10 @@ def panel_admin():
                 "CAMBIAR_PASSWORD": "#C9A961",
                 "ACTUALIZAR_TELEFONO": "#C9A961",
                 "ENVIAR_MENSAJE": "#0066B3",
+                "ENTRADA_MANUAL": "#ffaa00",
+                "SALIDA_MANUAL": "#ffaa00",
+                "VALIDAR_ENTRADA_MANUAL": "#00ff88",
+                "REGENERAR_QR": "#C9A961",
             }
             for l in logs:
                 color = colores_accion.get(l['accion'], "#C9A961")
@@ -2727,6 +2933,104 @@ def panel_admin():
                             if st.button("❌ Cerrar historial", key=f"cerrar_hist_{v['id']}", use_container_width=True):
                                 st.session_state[f"ver_hist_veh_{v['id']}"] = False
                                 st.rerun()
+
+    elif seccion == "🆘 Registros Manuales":
+        st.markdown("### 🆘 Registros manuales (entradas sin identificación)")
+        pendientes = contar_registros_manuales_pendientes()
+        if pendientes:
+            st.error(f"⚠️ **{pendientes}** registro(s) sin validar.")
+        else:
+            st.success("✅ No hay registros pendientes de validación.")
+
+        fecha_desde, fecha_hasta = selector_rango_fechas("manuales")
+
+        ver_solo_pendientes = st.checkbox("Ver solo pendientes de validación",
+                                           value=bool(pendientes))
+
+        with st.spinner("Cargando registros manuales..."):
+            registros = obtener_registros_manuales(
+                fecha_desde, fecha_hasta, solo_pendientes=ver_solo_pendientes
+            )
+
+        if not registros:
+            st.info("No hay registros manuales en el rango.")
+        else:
+            st.caption(f"**{len(registros)}** registro(s)")
+
+            df_man = pd.DataFrame([{
+                'ID': r['id'],
+                'Fecha': r['hora_entrada'].strftime("%d/%m/%Y") if r['hora_entrada'] else "",
+                'Entrada': r['hora_entrada'].strftime("%H:%M") if r['hora_entrada'] else "",
+                'Salida': r['hora_salida'].strftime("%d/%m/%Y %H:%M") if r['hora_salida'] else "En curso",
+                'Persona': r['nombre_visitante'],
+                'ID mostrada': r['tipo_identificacion'] or "",
+                'Motivo': r['motivo'] or "",
+                'Tipo': r['tipo_vehiculo'] or "",
+                'Placas': r['placas'] or "(sin placas)",
+                'Marca': r['marca'] or "",
+                'Modelo': r['modelo'] or "",
+                'Autorizó': r['trabajador_nombre'] or "",
+                'Validado': "Sí" if r['validado'] else "NO",
+                'Validó admin': r['admin_nombre'] or "",
+            } for r in registros])
+
+            with st.spinner("Generando PDF..."):
+                pdf_data = generar_pdf_reporte(
+                    df_man, "Reporte de Entradas Manuales",
+                    f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+                )
+            st.download_button(
+                "📄 Descargar reporte PDF",
+                data=pdf_data,
+                file_name=f"entradas_manuales_{datetime.now().strftime('%Y%m%d')}.pdf",
+                mime="application/pdf",
+                use_container_width=True, type="primary", key="dl_man_pdf"
+            )
+
+            st.markdown("---")
+            for r in registros:
+                with st.container(border=True):
+                    badge = "✅ Validado" if r['validado'] else "🟡 Pendiente"
+                    st.markdown(f"### {badge} — {r['nombre_visitante']}")
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        st.markdown(f"**ID mostrada:** {r['tipo_identificacion'] or '—'}")
+                        st.markdown(f"**Motivo:** {r['motivo'] or '—'}")
+                        st.markdown(f"**Tipo vehículo:** {r['tipo_vehiculo']}")
+                        st.markdown(f"**Placas:** {r['placas'] or '(sin placas)'}")
+                        st.markdown(f"**Marca/Modelo/Color:** "
+                                    f"{r['marca'] or '—'} / {r['modelo'] or '—'} / {r['color'] or '—'}")
+                    with c2:
+                        st.markdown(f"**Entrada:** {r['hora_entrada']}")
+                        st.markdown(f"**Salida:** {r['hora_salida'] or 'En curso'}")
+                        st.markdown(f"**Autorizó:** {r['trabajador_nombre']} "
+                                    f"(@{r['trabajador_usuario']})")
+                        if r['validado']:
+                            st.markdown(f"**Validado por:** {r['admin_nombre']} "
+                                        f"({r['fecha_validacion']})")
+
+                    ev1, ev2 = st.columns(2)
+                    with ev1:
+                        if r['evidencia_entrada']:
+                            st.markdown("**📷 Entrada:**")
+                            img = base64_a_bytes(r['evidencia_entrada'])
+                            if img: st.image(img, use_container_width=True)
+                    with ev2:
+                        if r['evidencia_salida']:
+                            st.markdown("**📷 Salida:**")
+                            img = base64_a_bytes(r['evidencia_salida'])
+                            if img: st.image(img, use_container_width=True)
+
+                    if not r['validado']:
+                        if st.button(f"✅ Validar registro #{r['id']}",
+                                     key=f"val_man_{r['id']}",
+                                     type="primary", use_container_width=True):
+                            validar_registro_manual(r['id'], user['id'])
+                            registrar_log(user['id'], "VALIDAR_ENTRADA_MANUAL",
+                                          f"Validó entrada manual #{r['id']} de {r['nombre_visitante']}",
+                                          "Super_Registros_Manuales", r['id'])
+                            set_flash("success", f"✅ Registro #{r['id']} validado.")
+                            st.rerun()
 
     elif seccion == "🔧 Mi Cuenta":
         st.markdown("### 🔧 Mi Cuenta")

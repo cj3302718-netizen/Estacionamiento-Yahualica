@@ -6,6 +6,7 @@ import json
 import base64
 import cv2
 import numpy as np
+import secrets
 from datetime import datetime, timedelta
 from io import BytesIO
 
@@ -411,13 +412,24 @@ def placas_existen(placas):
     return len(res) > 0
 
 
-def crear_vehiculo(id_usuario, tipo, placas, marca=None, modelo=None, color=None):
+def crear_vehiculo(id_usuario, tipo, placas, marca=None, modelo=None, color=None,
+                   es_tramite=0, identificador_alterno=None):
     ejecutar_query(
-        """INSERT INTO Super_Vehiculos (id_usuario, tipo, placas, marca, modelo, color)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (id_usuario, tipo, placas, marca, modelo, color)
+        """INSERT INTO Super_Vehiculos
+           (id_usuario, tipo, placas, marca, modelo, color, es_tramite, identificador_alterno)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (id_usuario, tipo, placas, marca, modelo, color, es_tramite, identificador_alterno)
     )
     limpiar_cache()
+
+
+def generar_placas_temporales():
+    """Genera un identificador interno para vehículos sin placas físicas."""
+    res = ejecutar_query(
+        "SELECT COUNT(*) AS t FROM Super_Vehiculos WHERE es_tramite = 1", fetch=True
+    )
+    n = (res[0]['t'] if res else 0) + 1
+    return f"TEMP-{n:04d}"
 
 
 def eliminar_vehiculo(id_vehiculo):
@@ -438,17 +450,23 @@ def buscar_vehiculos_admin(buscar=None, limite=50):
         return ejecutar_query(
             f"""SELECT TOP {limite}
                       v.id, v.placas, v.tipo, v.marca, v.modelo, v.color,
+                      v.es_tramite, v.identificador_alterno,
                       u.id AS id_usuario, u.nombre_completo, u.usuario,
                       u.matricula, u.id_estudiante, u.carrera
                FROM Super_Vehiculos v
                INNER JOIN Super_Usuarios u ON v.id_usuario = u.id
-               WHERE v.placas LIKE ? OR u.nombre_completo LIKE ? OR u.matricula LIKE ?
+               WHERE v.placas LIKE ?
+                  OR u.nombre_completo LIKE ?
+                  OR u.matricula LIKE ?
+                  OR u.id_estudiante LIKE ?
+                  OR u.usuario LIKE ?
                ORDER BY v.placas""",
-            (like, like, like), fetch=True
+            (like, like, like, like, like), fetch=True
         )
     return ejecutar_query(
         f"""SELECT TOP {limite}
                   v.id, v.placas, v.tipo, v.marca, v.modelo, v.color,
+                  v.es_tramite, v.identificador_alterno,
                   u.id AS id_usuario, u.nombre_completo, u.usuario,
                   u.matricula, u.id_estudiante, u.carrera
            FROM Super_Vehiculos v
@@ -460,7 +478,6 @@ def buscar_vehiculos_admin(buscar=None, limite=50):
 
 @st.cache_data(ttl=30, show_spinner=False)
 def listar_todas_las_placas(limite=200):
-    """Devuelve todas las placas registradas. Útil para debug del escáner QR."""
     res = ejecutar_query(
         f"""SELECT TOP {limite} v.placas, v.tipo, u.nombre_completo
             FROM Super_Vehiculos v
@@ -606,6 +623,48 @@ def generar_qr_imagen(data_dict):
     buffer = BytesIO()
     img.save(buffer, format="PNG")
     return buffer.getvalue()
+
+
+# --- TOKEN QR (REGENERAR / VALIDAR) ---
+def generar_token_qr():
+    return secrets.token_hex(16).upper()
+
+
+def obtener_token_qr(id_usuario):
+    res = ejecutar_query(
+        "SELECT qr_token FROM Super_Usuarios WHERE id = ?",
+        (id_usuario,), fetch=True
+    )
+    return res[0]['qr_token'] if res else None
+
+
+def regenerar_token_qr(id_usuario):
+    nuevo = generar_token_qr()
+    ejecutar_query(
+        "UPDATE Super_Usuarios SET qr_token = ?, qr_token_updated = GETDATE() WHERE id = ?",
+        (nuevo, id_usuario)
+    )
+    limpiar_cache()
+    return nuevo
+
+
+def verificar_token_qr(id_vehiculo, token):
+    """True si el token es válido o si el usuario aún no tiene token generado
+    (compatibilidad con QRs antiguos sin token)."""
+    if not token:
+        return True
+    res = ejecutar_query(
+        """SELECT u.qr_token FROM Super_Vehiculos v
+           INNER JOIN Super_Usuarios u ON v.id_usuario = u.id
+           WHERE v.id = ?""",
+        (id_vehiculo,), fetch=True
+    )
+    if not res:
+        return False
+    token_bd = res[0]['qr_token']
+    if not token_bd:
+        return True
+    return token_bd == token
 
 
 # --- CASETA ---
@@ -828,6 +887,105 @@ def obtener_vehiculos_alerta(horas_minimas=12):
              AND DATEDIFF(MINUTE, r.hora_entrada, GETDATE()) >= ?
            ORDER BY r.hora_entrada ASC""",
         (horas_minimas * 60,), fetch=True
+    )
+
+
+# =========================================================
+# ENTRADAS MANUALES SIN IDENTIFICACIÓN
+# =========================================================
+def registrar_entrada_manual(nombre, tipo_id, motivo, placas, marca, modelo,
+                              color, tipo_vehiculo, id_trabajador, evidencia_b64):
+    ejecutar_query(
+        """INSERT INTO Super_Registros_Manuales
+           (nombre_visitante, tipo_identificacion, motivo, placas, marca, modelo,
+            color, tipo_vehiculo, id_trabajador, evidencia_entrada)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (nombre, tipo_id, motivo, placas, marca, modelo, color,
+         tipo_vehiculo, id_trabajador, evidencia_b64)
+    )
+    if tipo_vehiculo:
+        ejecutar_query(
+            "UPDATE Super_Espacios SET ocupados = ocupados + 1 WHERE tipo = ?",
+            (tipo_vehiculo,)
+        )
+    limpiar_cache()
+
+
+def registrar_salida_manual(id_registro, id_trabajador, evidencia_b64):
+    res = ejecutar_query(
+        "SELECT tipo_vehiculo FROM Super_Registros_Manuales WHERE id = ?",
+        (id_registro,), fetch=True
+    )
+    tipo = res[0]['tipo_vehiculo'] if res else None
+    ejecutar_query(
+        """UPDATE Super_Registros_Manuales
+           SET hora_salida = GETDATE(), estado = 'FUERA',
+               id_trabajador_salida = ?, evidencia_salida = ?
+           WHERE id = ?""",
+        (id_trabajador, evidencia_b64, id_registro)
+    )
+    if tipo:
+        ejecutar_query(
+            "UPDATE Super_Espacios SET ocupados = ocupados - 1 WHERE tipo = ? AND ocupados > 0",
+            (tipo,)
+        )
+    limpiar_cache()
+
+
+def obtener_registros_manuales(fecha_desde=None, fecha_hasta=None,
+                                solo_pendientes=False, limite=200):
+    cond, params = [], []
+    if fecha_desde:
+        cond.append("CAST(rm.hora_entrada AS DATE) >= ?"); params.append(fecha_desde)
+    if fecha_hasta:
+        cond.append("CAST(rm.hora_entrada AS DATE) <= ?"); params.append(fecha_hasta)
+    if solo_pendientes:
+        cond.append("rm.validado = 0 AND rm.estado = 'FUERA'")
+    where = "WHERE " + " AND ".join(cond) if cond else ""
+    return ejecutar_query(
+        f"""SELECT TOP {limite} rm.*,
+                   t.nombre_completo AS trabajador_nombre, t.usuario AS trabajador_usuario,
+                   a.nombre_completo AS admin_nombre, a.usuario AS admin_usuario
+            FROM Super_Registros_Manuales rm
+            LEFT JOIN Super_Usuarios t ON rm.id_trabajador = t.id
+            LEFT JOIN Super_Usuarios a ON rm.id_admin_valida = a.id
+            {where}
+            ORDER BY rm.hora_entrada DESC""",
+        tuple(params), fetch=True
+    )
+
+
+def contar_registros_manuales_pendientes():
+    res = ejecutar_query(
+        """SELECT COUNT(*) AS t FROM Super_Registros_Manuales
+           WHERE validado = 0 AND estado = 'FUERA'""",
+        fetch=True
+    )
+    return res[0]['t'] if res else 0
+
+
+def validar_registro_manual(id_registro, id_admin):
+    ejecutar_query(
+        """UPDATE Super_Registros_Manuales
+           SET validado = 1, id_admin_valida = ?, fecha_validacion = GETDATE()
+           WHERE id = ?""",
+        (id_admin, id_registro)
+    )
+    limpiar_cache()
+    return True, "Registro validado."
+
+
+def obtener_vehiculos_manuales_dentro():
+    return ejecutar_query(
+        """SELECT rm.id AS id_registro, rm.nombre_visitante, rm.placas,
+                  rm.marca, rm.modelo, rm.color, rm.tipo_vehiculo,
+                  rm.hora_entrada, rm.evidencia_entrada,
+                  u.nombre_completo AS trabajador_nombre
+           FROM Super_Registros_Manuales rm
+           INNER JOIN Super_Usuarios u ON rm.id_trabajador = u.id
+           WHERE rm.estado = 'DENTRO'
+           ORDER BY rm.hora_entrada DESC""",
+        fetch=True
     )
 
 
