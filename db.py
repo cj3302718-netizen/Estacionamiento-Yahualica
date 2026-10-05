@@ -7,6 +7,7 @@ import base64
 import cv2
 import numpy as np
 import secrets
+import hmac
 from datetime import datetime, timedelta
 from io import BytesIO
 
@@ -423,13 +424,38 @@ def crear_vehiculo(id_usuario, tipo, placas, marca=None, modelo=None, color=None
     limpiar_cache()
 
 
-def generar_placas_temporales():
-    """Genera un identificador interno para vehículos sin placas físicas."""
+def actualizar_placas_tramite(id_vehiculo, id_usuario, nuevas_placas):
+    """Cambia el identificador TEMP por las placas reales. Devuelve (ok, mensaje)."""
+    limpio = str(nuevas_placas or "").upper().replace("-", "").replace(" ", "").strip()
+    if not limpio:
+        return False, "Escribe las placas."
     res = ejecutar_query(
-        "SELECT COUNT(*) AS t FROM Super_Vehiculos WHERE es_tramite = 1", fetch=True
+        "SELECT es_tramite FROM Super_Vehiculos WHERE id = ? AND id_usuario = ?",
+        (id_vehiculo, id_usuario), fetch=True
     )
-    n = (res[0]['t'] if res else 0) + 1
-    return f"TEMP-{n:04d}"
+    if not res or not res[0]['es_tramite']:
+        return False, "Este vehículo no está en trámite."
+    if placas_existen(limpio):
+        return False, "Ya existe un vehículo con esas placas."
+    ejecutar_query(
+        "UPDATE Super_Vehiculos SET placas = ?, es_tramite = 0 WHERE id = ? AND id_usuario = ?",
+        (limpio, id_vehiculo, id_usuario)
+    )
+    limpiar_cache()
+    return True, "Placas actualizadas."
+
+
+def generar_placas_temporales():
+    """Genera un identificador interno TEMP-XXXX que nunca se repite (usa el mayor número existente)."""
+    res = ejecutar_query(
+        "SELECT placas FROM Super_Vehiculos WHERE placas LIKE 'TEMP-%'", fetch=True
+    ) or []
+    mayor = 0
+    for r in res:
+        sufijo = str(r['placas'])[5:]
+        if sufijo.isdigit():
+            mayor = max(mayor, int(sufijo))
+    return f"TEMP-{mayor + 1:04d}"
 
 
 def eliminar_vehiculo(id_vehiculo):
@@ -649,10 +675,9 @@ def regenerar_token_qr(id_usuario):
 
 
 def verificar_token_qr(id_vehiculo, token):
-    """True si el token es válido o si el usuario aún no tiene token generado
-    (compatibilidad con QRs antiguos sin token)."""
-    if not token:
-        return True
+    """Si el dueño ya generó su token, el QR debe traer ese mismo token: un QR sin token
+    (o con un token anterior) deja de valer. Si el dueño nunca generó token, se aceptan
+    los QR antiguos para no romper los que ya están impresos."""
     res = ejecutar_query(
         """SELECT u.qr_token FROM Super_Vehiculos v
            INNER JOIN Super_Usuarios u ON v.id_usuario = u.id
@@ -664,7 +689,7 @@ def verificar_token_qr(id_vehiculo, token):
     token_bd = res[0]['qr_token']
     if not token_bd:
         return True
-    return token_bd == token
+    return hmac.compare_digest(str(token or "").encode("utf-8"), str(token_bd).encode("utf-8"))
 
 
 # --- CASETA ---

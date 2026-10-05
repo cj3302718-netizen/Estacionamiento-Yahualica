@@ -42,7 +42,7 @@ from db import (
     crear_tabla_mensajes, crear_indices,
     listar_todas_las_placas,
     # === NUEVAS FUNCIONES v2 ===
-    obtener_token_qr, regenerar_token_qr, verificar_token_qr,
+    obtener_token_qr, regenerar_token_qr, verificar_token_qr, actualizar_placas_tramite,
     generar_placas_temporales,
     registrar_entrada_manual, registrar_salida_manual,
     obtener_registros_manuales, contar_registros_manuales_pendientes,
@@ -240,6 +240,7 @@ def _poll_qr_scanner():
     estado = processor.estado()
     if estado["qr"] and estado["foto"]:
         st.session_state["qr_escaneado_actual"] = estado["qr"]
+        st.session_state["qr_metodo"] = None
         st.session_state["qr_foto_auto"] = estado["foto"]
         processor.reiniciar()
         try:
@@ -300,19 +301,27 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
         return
 
     # === VALIDACIÓN DEL TOKEN DEL QR ===
-    token_qr = data.get("token") if isinstance(data, dict) else None
-    if token_qr and not verificar_token_qr(vehiculo['id'], token_qr):
-        st.error("❌ **QR INVÁLIDO.** Este código fue regenerado o revocado por el alumno.")
-        st.caption("El alumno debe descargar su QR actualizado desde la app.")
-        if st.button("🔄 Volver a escanear", use_container_width=True, key="qr_token_invalid"):
-            st.session_state["qr_escaneado_actual"] = None
-            st.session_state["qr_processor_ref"] = None
-            st.session_state["qr_foto_auto"] = None
-            st.rerun()
-        return
+    # El origen (QR o búsqueda manual) lo fija la app, nunca el contenido del QR.
+    metodo = st.session_state.get("qr_metodo") or "QR"
+    via = "QR" if metodo == "QR" else "BÚSQUEDA MANUAL (identificación verificada)"
+    if metodo == "QR":
+        token_qr = data.get("token") if isinstance(data, dict) else None
+        if not verificar_token_qr(vehiculo['id'], token_qr):
+            st.error("❌ **QR INVÁLIDO.** Este código fue regenerado, revocado o no trae token vigente.")
+            st.caption("El alumno debe descargar su QR actualizado desde la app. "
+                       "Si no puede, usa **🆘 Buscar por datos** y verifica su credencial.")
+            if st.button("🔄 Volver a escanear", use_container_width=True, key="qr_token_invalid"):
+                st.session_state["qr_escaneado_actual"] = None
+                st.session_state["qr_processor_ref"] = None
+                st.session_state["qr_foto_auto"] = None
+                st.rerun()
+            return
 
     # --- Datos del alumno encontrado ---
-    st.success("✅ **QR detectado correctamente**")
+    if metodo == "QR":
+        st.success("✅ **QR detectado correctamente**")
+    else:
+        st.info("🪪 Ingreso **sin QR**: confirma la identidad con una credencial.")
     st.markdown("### 👤 Datos del alumno")
     icono = "🚗" if vehiculo['tipo'] == 'Auto' else "🏍️"
 
@@ -372,6 +381,11 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
         )
         foto_bytes = foto_evidencia.getvalue() if foto_evidencia else None
 
+    confirma = True
+    if metodo == "MANUAL":
+        confirma = st.checkbox("✅ Verifiqué la identificación (credencial escolar u oficial) y coincide con el registro",
+                               key=f"confirma_id_{vehiculo['id']}_{accion}")
+
     st.markdown(f"### ✅ Confirmar {accion}")
 
     if registro_activo:
@@ -400,7 +414,9 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
         col_a, col_b = st.columns(2)
         with col_a:
             if st.button("🚪 Registrar SALIDA", type="primary", use_container_width=True, key="btn_salida_qr"):
-                if not foto_bytes:
+                if not confirma:
+                    st.error("❌ Confirma que verificaste la identificación.")
+                elif not foto_bytes:
                     st.error("❌ Debes tomar la foto de evidencia.")
                 else:
                     with st.spinner("💾 Registrando salida..."):
@@ -410,7 +426,7 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
                         )
                         registrar_log(
                             user['id'], "REGISTRAR_SALIDA",
-                            f"Salida de {vehiculo['placas']} ({vehiculo['nombre_completo']}) por QR",
+                            f"Salida de {vehiculo['placas']} ({vehiculo['nombre_completo']}) por {via}",
                             "Super_Registros", registro_activo['id']
                         )
                     st.session_state["qr_escaneado_actual"] = None
@@ -430,7 +446,9 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
         col_a, col_b = st.columns(2)
         with col_a:
             if st.button("🚗 Registrar ENTRADA", type="primary", use_container_width=True, key="btn_entrada_qr"):
-                if not foto_bytes:
+                if not confirma:
+                    st.error("❌ Confirma que verificaste la identificación.")
+                elif not foto_bytes:
                     st.error("❌ Debes tomar la foto de evidencia.")
                 else:
                     with st.spinner("💾 Registrando entrada..."):
@@ -440,7 +458,7 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
                         )
                         registrar_log(
                             user['id'], "REGISTRAR_ENTRADA",
-                            f"Entrada de {vehiculo['placas']} ({vehiculo['nombre_completo']}) por QR",
+                            f"Entrada de {vehiculo['placas']} ({vehiculo['nombre_completo']}) por {via}",
                             "Super_Registros"
                         )
                     st.session_state["qr_escaneado_actual"] = None
@@ -518,6 +536,7 @@ def _seccion_escaner_qr(user):
             foto = base64_a_bytes(resultado["foto"])
             if foto:
                 st.session_state["qr_escaneado_actual"] = str(resultado["qr"]).strip()
+                st.session_state["qr_metodo"] = None
                 st.session_state["qr_foto_auto"] = foto
                 st.rerun()
 
@@ -593,6 +612,8 @@ def _seccion_escaner_qr(user):
                                 st.session_state["qr_escaneado_actual"] = json.dumps(
                                     {"placas": r['placas']}
                                 )
+                                st.session_state["qr_foto_auto"] = None
+                                st.session_state["qr_metodo"] = "MANUAL"
                                 st.rerun()
 
     # --------- TAB 2: ENTRADA SIN IDENTIFICACIÓN ---------
@@ -1918,6 +1939,27 @@ def panel_alumno():
                 with col2:
                     st.button("🗑️ Borrar", key=f"del_{v['id']}", use_container_width=True,
                               on_click=cb_mostrar_confirm, args=(f"confirmar_elim_veh_{v['id']}",))
+
+                if v.get('es_tramite'):
+                    with st.expander("🕒 Placas en trámite — actualizar cuando las recibas"):
+                        nuevas = st.text_input("Placas definitivas", key=f"nuevas_placas_{v['id']}",
+                                               placeholder="Ej. ABC-1234").upper().strip()
+                        if st.button("💾 Guardar placas", key=f"guardar_placas_{v['id']}",
+                                     type="primary", use_container_width=True):
+                            ok_f, msg_f = validar_placas(nuevas)
+                            if not ok_f:
+                                st.error(f"❌ {msg_f}")
+                            else:
+                                ok_u, msg_u = actualizar_placas_tramite(v['id'], user['id'], nuevas)
+                                if ok_u:
+                                    registrar_log(user['id'], "ACTUALIZAR_PLACAS",
+                                                  f"{v['placas']} → {nuevas.replace('-', '').replace(' ', '')}",
+                                                  "Super_Vehiculos", v['id'])
+                                    st.session_state.qr_generado = None
+                                    set_flash("success", "✅ Placas actualizadas. Descarga de nuevo tu QR.")
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ {msg_u}")
 
                 if st.session_state.get(f"confirmar_elim_veh_{v['id']}", False):
                     with st.container(border=True):
