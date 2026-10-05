@@ -454,7 +454,8 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
                     with st.spinner("💾 Registrando entrada..."):
                         registrar_entrada(
                             vehiculo['id_usuario'], vehiculo['id'], vehiculo['tipo'],
-                            user['id'], imagen_a_base64(foto_bytes)
+                            user['id'], imagen_a_base64(foto_bytes),
+                            metodo=metodo
                         )
                         registrar_log(
                             user['id'], "REGISTRAR_ENTRADA",
@@ -643,6 +644,9 @@ def _seccion_escaner_qr(user):
                     st.error("Completa nombre y motivo.")
                 elif not foto_man:
                     st.error("La foto de evidencia es obligatoria.")
+                elif (err_man := _validar_entrada_manual(tiene_placas, placas_man,
+                                                         marca_man, modelo_man, color_man)):
+                    st.error(f"❌ {err_man}")
                 else:
                     with st.spinner("Guardando entrada manual..."):
                         registrar_entrada_manual(
@@ -686,6 +690,24 @@ def _seccion_escaner_qr(user):
                     st.rerun()
 
 
+def _validar_entrada_manual(tiene_placas, placas, marca, modelo, color):
+    """Devuelve un texto de error si la entrada sin identificación no debe registrarse; si no, None."""
+    limpio = re.sub(r"[^A-Z0-9]", "", str(placas or "").upper())
+    if tiene_placas and not limpio:
+        return "Escribe las placas o desmarca la casilla."
+    if not tiene_placas and not any(str(x or "").strip() for x in (marca, modelo, color)):
+        return "Sin placas: describe el vehículo (marca, modelo o color) para poder identificarlo."
+    if limpio:
+        registrado = obtener_vehiculo_por_placas(limpio)
+        if registrado:
+            return (f"Esas placas ya están registradas a nombre de {registrado['nombre_completo']}. "
+                    "Usa la pestaña 'Buscar por datos' y verifica su credencial.")
+        for m in obtener_vehiculos_manuales_dentro():
+            if m['placas'] and re.sub(r"[^A-Z0-9]", "", str(m['placas']).upper()) == limpio:
+                return "Ya hay una entrada manual dentro con esas placas."
+    return None
+
+
 # ============================================================
 # HELPERS: PDF
 # ============================================================
@@ -725,34 +747,47 @@ def generar_pdf_reporte(df, titulo, subtitulo=""):
     pdf.ln(3)
 
     page_width = 297 - 20
-    cols = list(df.columns)[:9]
+    cols = list(df.columns)[:14]
     df = df[cols]
     n = len(cols)
-    widths = [page_width / n] * n
 
-    pdf.set_fill_color(123, 27, 46)
-    pdf.set_text_color(255, 255, 255)
-    pdf.set_font("Helvetica", "B", 8)
-    pdf.set_x(10)
-    for i, c in enumerate(cols):
-        pdf.cell(widths[i], 7, str(c)[:25], border=1, align="C", fill=True)
-    pdf.ln()
+    def _txt(v):
+        if v is None or (not isinstance(v, str) and pd.isna(v)):
+            return ""
+        return str(v).encode("latin-1", "replace").decode("latin-1")   # evita errores con emojis/símbolos
 
-    pdf.set_font("Helvetica", "", 7)
-    pdf.set_text_color(40, 40, 40)
+    # Ancho proporcional al contenido de cada columna
+    pesos = []
+    for c in cols:
+        largo = max([len(_txt(c)) * 1.35] + [len(_txt(v)) for v in df[c].head(200)])   # el encabezado va en negritas
+        pesos.append(min(max(largo, 6), 32))
+    total_peso = sum(pesos)
+    widths = [page_width * p / total_peso for p in pesos]
+
+    def _ajusta(texto, ancho):
+        if pdf.get_string_width(texto) <= ancho - 1.5:
+            return texto
+        while texto and pdf.get_string_width(texto + "..") > ancho - 1.5:
+            texto = texto[:-1]
+        return texto + ".."
+
+    def _encabezado():
+        pdf.set_fill_color(123, 27, 46)
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_font("Helvetica", "B", 8)
+        pdf.set_x(10)
+        for i, c in enumerate(cols):
+            pdf.cell(widths[i], 7, _ajusta(_txt(c), widths[i]), border=1, align="C", fill=True)
+        pdf.ln()
+        pdf.set_font("Helvetica", "", 7)
+        pdf.set_text_color(40, 40, 40)
+
+    _encabezado()
     fill = False
     for _, row in df.iterrows():
         if pdf.get_y() > 190:
             pdf.add_page()
-            pdf.set_fill_color(123, 27, 46)
-            pdf.set_text_color(255, 255, 255)
-            pdf.set_font("Helvetica", "B", 8)
-            pdf.set_x(10)
-            for i, c in enumerate(cols):
-                pdf.cell(widths[i], 7, str(c)[:25], border=1, align="C", fill=True)
-            pdf.ln()
-            pdf.set_font("Helvetica", "", 7)
-            pdf.set_text_color(40, 40, 40)
+            _encabezado()
 
         if fill:
             pdf.set_fill_color(245, 240, 232)
@@ -760,10 +795,7 @@ def generar_pdf_reporte(df, titulo, subtitulo=""):
             pdf.set_fill_color(255, 255, 255)
         pdf.set_x(10)
         for i, c in enumerate(cols):
-            val = row[c]
-            if pd.isna(val):
-                val = ""
-            pdf.cell(widths[i], 6, str(val)[:30], border=1, align="C", fill=True)
+            pdf.cell(widths[i], 6, _ajusta(_txt(row[c]), widths[i]), border=1, align="C", fill=True)
         pdf.ln()
         fill = not fill
 
@@ -2579,14 +2611,15 @@ def panel_admin():
         st.markdown("### 📋 Registros de entradas/salidas")
         fecha_desde, fecha_hasta = selector_rango_fechas("registros")
 
-        c1, c2 = st.columns(2)
+        c1, c2, c3 = st.columns(3)
         with c1: filtro_estado = st.selectbox("Estado", ["Todos", "DENTRO", "FUERA"], key="reg_estado")
         with c2: filtro_tipo = st.selectbox("Tipo", ["Todos", "Auto", "Moto"], key="reg_tipo")
+        with c3: filtro_metodo = st.selectbox("Ingreso", ["Todos", "QR", "Manual"], key="reg_metodo")
 
         buscar = st.text_input("🔍 Buscar (nombre, placas, matrícula)", key="reg_buscar").lower().strip()
         por_pagina = mostrar_paginacion_superior("reg")
 
-        filtros_actuales = f"{fecha_desde}|{fecha_hasta}|{filtro_estado}|{filtro_tipo}|{buscar}|{por_pagina}"
+        filtros_actuales = f"{fecha_desde}|{fecha_hasta}|{filtro_estado}|{filtro_tipo}|{filtro_metodo}|{buscar}|{por_pagina}"
         if st.session_state.get("reg_filtros_prev") != filtros_actuales:
             st.session_state["reg_pagina"] = 1
             st.session_state["reg_filtros_prev"] = filtros_actuales
@@ -2595,23 +2628,27 @@ def panel_admin():
         offset = (pagina - 1) * por_pagina
 
         with st.spinner("📋 Cargando registros..."):
-            total = contar_registros_filtrados(fecha_desde, fecha_hasta, filtro_estado, filtro_tipo, buscar or None)
+            total = contar_registros_filtrados(fecha_desde, fecha_hasta, filtro_estado, filtro_tipo, buscar or None,
+                                              filtro_metodo=filtro_metodo)
             registros = obtener_registros_paginado(fecha_desde, fecha_hasta, filtro_estado, filtro_tipo,
-                                                   buscar or None, offset, por_pagina)
+                                                   buscar or None, offset, por_pagina,
+                                                   filtro_metodo=filtro_metodo)
 
         if not registros:
             st.info("No hay registros en el rango seleccionado.")
         else:
             st.caption(f"**Mostrando {len(registros)} de {total} registro(s)**")
 
+            def _ingreso_txt(r):
+                m = r.get('metodo_ingreso')
+                return "Manual" if m == "MANUAL" else ("QR" if m == "QR" else "-")
+
             df_export = pd.DataFrame([{
                 'ID': r['id'], 'Estado': r['estado'], 'Alumno': r['nombre_completo'],
                 'Matrícula': r['matricula'], 'Carrera': r['carrera'],
-                'Tipo': r['tipo'], 'Placas': r['placas'],
-                'Fecha Entrada': r['hora_entrada'].strftime("%d/%m/%Y") if r['hora_entrada'] else "",
-                'Hora Entrada': r['hora_entrada'].strftime("%H:%M:%S") if r['hora_entrada'] else "",
-                'Fecha Salida': r['hora_salida'].strftime("%d/%m/%Y") if r['hora_salida'] else "En curso",
-                'Hora Salida': r['hora_salida'].strftime("%H:%M:%S") if r['hora_salida'] else ""
+                'Tipo': r['tipo'], 'Placas': r['placas'], 'Ingreso': _ingreso_txt(r),
+                'Entrada': r['hora_entrada'].strftime("%d/%m/%Y %H:%M") if r['hora_entrada'] else "",
+                'Salida': r['hora_salida'].strftime("%d/%m/%Y %H:%M") if r['hora_salida'] else "En curso",
             } for r in registros])
 
             rango_txt = (f"Período: {fecha_desde.strftime('%d/%m/%Y')} - {fecha_hasta.strftime('%d/%m/%Y')}"
@@ -2634,6 +2671,8 @@ def panel_admin():
                     estado_icon = "🟢" if r['estado'] == 'DENTRO' else "🔴"
                     st.markdown(f"**{estado_icon} {icono} {r['placas']}** — {r['nombre_completo']}")
                     st.caption(f"Matrícula: {r['matricula'] or 'N/A'} | Carrera: {r['carrera'] or 'N/A'}")
+                    if r.get('metodo_ingreso') == 'MANUAL':
+                        st.caption("🪪 **Ingreso manual (sin QR)** — la caseta verificó la identificación")
                     st.caption(f"⬇️ Entrada: {r['hora_entrada']}")
                     st.caption(f"⬆️ Salida: {r['hora_salida'] or '—'}")
                     if r['evidencia_entrada'] or r['evidencia_salida']:

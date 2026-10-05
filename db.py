@@ -531,6 +531,32 @@ def obtener_registro_activo_de_usuario(id_usuario):
     return res[0] if res else None
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def _existe_columna_metodo():
+    """True si Super_Registros ya tiene la columna metodo_ingreso (migración v3)."""
+    try:
+        res = ejecutar_query("SELECT COL_LENGTH('Super_Registros', 'metodo_ingreso') AS c", fetch=True)
+        return bool(res and res[0]['c'])
+    except Exception:
+        return False
+
+
+def _sel_metodo():
+    return "r.metodo_ingreso" if _existe_columna_metodo() else "CAST(NULL AS NVARCHAR(80))"
+
+
+def _cond_metodo(filtro):
+    """Condición SQL para filtrar por forma de ingreso ('QR' o 'Manual')."""
+    if not filtro or filtro == "Todos":
+        return None
+    tiene = _existe_columna_metodo()
+    if filtro == "Manual":
+        return "r.metodo_ingreso = 'MANUAL'" if tiene else "1 = 0"
+    if filtro == "QR":
+        return "ISNULL(r.metodo_ingreso, 'QR') = 'QR'" if tiene else None
+    return None
+
+
 def obtener_todos_los_registros(fecha_desde=None, fecha_hasta=None):
     condiciones, params = [], []
     if fecha_desde:
@@ -556,7 +582,7 @@ def obtener_todos_los_registros(fecha_desde=None, fecha_hasta=None):
 
 
 def obtener_registros_paginado(fecha_desde=None, fecha_hasta=None, filtro_estado=None,
-                               filtro_tipo=None, buscar=None, offset=0, limite=20):
+                               filtro_tipo=None, buscar=None, offset=0, limite=20, filtro_metodo=None):
     condiciones, params = [], []
     if fecha_desde:
         condiciones.append("CAST(r.hora_entrada AS DATE) >= ?")
@@ -574,13 +600,17 @@ def obtener_registros_paginado(fecha_desde=None, fecha_hasta=None, filtro_estado
         condiciones.append("(u.nombre_completo LIKE ? OR v.placas LIKE ? OR u.matricula LIKE ?)")
         like = f"%{buscar}%"
         params.extend([like, like, like])
+    cm = _cond_metodo(filtro_metodo)
+    if cm:
+        condiciones.append(cm)
     where = "WHERE " + " AND ".join(condiciones) if condiciones else ""
 
     return ejecutar_query(
         f"""SELECT r.id, r.hora_entrada, r.hora_salida, r.estado,
                   r.evidencia_entrada, r.evidencia_salida,
                   v.tipo, v.placas, v.marca, v.modelo,
-                  u.nombre_completo, u.matricula, u.carrera, u.grupo, u.id_estudiante
+                  u.nombre_completo, u.matricula, u.carrera, u.grupo, u.id_estudiante,
+                  {_sel_metodo()} AS metodo_ingreso
            FROM Super_Registros r
            INNER JOIN Super_Vehiculos v ON r.id_vehiculo = v.id
            INNER JOIN Super_Usuarios u ON r.id_usuario = u.id
@@ -592,7 +622,7 @@ def obtener_registros_paginado(fecha_desde=None, fecha_hasta=None, filtro_estado
 
 
 def contar_registros_filtrados(fecha_desde=None, fecha_hasta=None,
-                               filtro_estado=None, filtro_tipo=None, buscar=None):
+                               filtro_estado=None, filtro_tipo=None, buscar=None, filtro_metodo=None):
     condiciones, params = [], []
     if fecha_desde:
         condiciones.append("CAST(r.hora_entrada AS DATE) >= ?")
@@ -610,6 +640,9 @@ def contar_registros_filtrados(fecha_desde=None, fecha_hasta=None,
         condiciones.append("(u.nombre_completo LIKE ? OR v.placas LIKE ? OR u.matricula LIKE ?)")
         like = f"%{buscar}%"
         params.extend([like, like, like])
+    cm = _cond_metodo(filtro_metodo)
+    if cm:
+        condiciones.append(cm)
     where = "WHERE " + " AND ".join(condiciones) if condiciones else ""
 
     res = ejecutar_query(
@@ -718,13 +751,23 @@ def obtener_registro_activo_por_vehiculo(id_vehiculo):
     return res[0] if res else None
 
 
-def registrar_entrada(id_usuario, id_vehiculo, tipo, id_trabajador, evidencia_b64):
-    ejecutar_query(
-        """INSERT INTO Super_Registros
-           (id_usuario, id_vehiculo, estado, id_trabajador_entrada, evidencia_entrada)
-           VALUES (?, ?, 'DENTRO', ?, ?)""",
-        (id_usuario, id_vehiculo, id_trabajador, evidencia_b64)
-    )
+def registrar_entrada(id_usuario, id_vehiculo, tipo, id_trabajador, evidencia_b64, metodo=None):
+    """metodo: 'QR' o 'MANUAL' (búsqueda + identificación verificada). Si la columna
+    metodo_ingreso aún no existe, la entrada se guarda igual sin ese dato."""
+    if metodo and _existe_columna_metodo():
+        ejecutar_query(
+            """INSERT INTO Super_Registros
+               (id_usuario, id_vehiculo, estado, id_trabajador_entrada, evidencia_entrada, metodo_ingreso)
+               VALUES (?, ?, 'DENTRO', ?, ?, ?)""",
+            (id_usuario, id_vehiculo, id_trabajador, evidencia_b64, str(metodo)[:80])
+        )
+    else:
+        ejecutar_query(
+            """INSERT INTO Super_Registros
+               (id_usuario, id_vehiculo, estado, id_trabajador_entrada, evidencia_entrada)
+               VALUES (?, ?, 'DENTRO', ?, ?)""",
+            (id_usuario, id_vehiculo, id_trabajador, evidencia_b64)
+        )
     ejecutar_query("UPDATE Super_Espacios SET ocupados = ocupados + 1 WHERE tipo = ?", (tipo,))
     limpiar_cache()
 
