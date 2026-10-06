@@ -520,6 +520,74 @@ def obtener_espacios():
     return ejecutar_query("SELECT * FROM Super_Espacios", fetch=True)
 
 
+class EstacionamientoLleno(Exception):
+    """Se intentó registrar una entrada pero ya no hay lugares de ese tipo de vehículo."""
+
+
+def estado_espacio(tipo):
+    """Capacidad y ocupación en vivo (sin caché) de un tipo de vehículo ('Auto' o 'Moto')."""
+    res = ejecutar_query(
+        "SELECT capacidad_total, ocupados FROM Super_Espacios WHERE tipo = ?",
+        (tipo,), fetch=True
+    )
+    return res[0] if res else None
+
+
+def verificar_hay_lugar(tipo):
+    """Lanza EstacionamientoLleno si no hay lugares libres para ese tipo."""
+    e = estado_espacio(tipo)
+    if e and int(e['ocupados'] or 0) >= int(e['capacidad_total'] or 0):
+        nombre = "autos" if tipo == "Auto" else "motos"
+        raise EstacionamientoLleno(
+            f"El estacionamiento de {nombre} está lleno ({e['ocupados']} de {e['capacidad_total']})."
+        )
+
+
+def actualizar_capacidad(tipo, nueva_capacidad):
+    """Cambia la capacidad total de un tipo. Devuelve (ok, mensaje)."""
+    try:
+        nueva = int(nueva_capacidad)
+    except (TypeError, ValueError):
+        return False, "La capacidad debe ser un número entero."
+    if nueva < 0 or nueva > 10000:
+        return False, "La capacidad debe estar entre 0 y 10,000."
+    e = estado_espacio(tipo)
+    if not e:
+        return False, f"No existe configuración de espacios para {tipo}."
+    if nueva < int(e['ocupados'] or 0):
+        return False, (f"Hay {e['ocupados']} vehículo(s) dentro; la capacidad no puede ser menor "
+                       f"({nueva}). Espera a que salgan o recalcula la ocupación.")
+    ejecutar_query("UPDATE Super_Espacios SET capacidad_total = ? WHERE tipo = ?", (nueva, tipo))
+    limpiar_cache()
+    return True, "Capacidad actualizada."
+
+
+def recalcular_ocupados():
+    """Vuelve a calcular la ocupación real contando los vehículos con estado DENTRO
+    (registros normales + entradas manuales). Devuelve {'Auto': n, 'Moto': n}."""
+    resultado = {}
+    for tipo in ("Auto", "Moto"):
+        n = ejecutar_query(
+            """SELECT COUNT(*) AS t FROM Super_Registros r
+               INNER JOIN Super_Vehiculos v ON r.id_vehiculo = v.id
+               WHERE r.estado = 'DENTRO' AND v.tipo = ?""",
+            (tipo,), fetch=True
+        )
+        total = int(n[0]['t']) if n else 0
+        try:
+            m = ejecutar_query(
+                "SELECT COUNT(*) AS t FROM Super_Registros_Manuales WHERE estado = 'DENTRO' AND tipo_vehiculo = ?",
+                (tipo,), fetch=True
+            )
+            total += int(m[0]['t']) if m else 0
+        except Exception:
+            pass
+        ejecutar_query("UPDATE Super_Espacios SET ocupados = ? WHERE tipo = ?", (total, tipo))
+        resultado[tipo] = total
+    limpiar_cache()
+    return resultado
+
+
 # --- REGISTROS ---
 def obtener_registro_activo_de_usuario(id_usuario):
     res = ejecutar_query(
@@ -754,6 +822,7 @@ def obtener_registro_activo_por_vehiculo(id_vehiculo):
 def registrar_entrada(id_usuario, id_vehiculo, tipo, id_trabajador, evidencia_b64, metodo=None):
     """metodo: 'QR' o 'MANUAL' (búsqueda + identificación verificada). Si la columna
     metodo_ingreso aún no existe, la entrada se guarda igual sin ese dato."""
+    verificar_hay_lugar(tipo)
     if metodo and _existe_columna_metodo():
         ejecutar_query(
             """INSERT INTO Super_Registros
@@ -963,6 +1032,8 @@ def obtener_vehiculos_alerta(horas_minimas=12):
 # =========================================================
 def registrar_entrada_manual(nombre, tipo_id, motivo, placas, marca, modelo,
                               color, tipo_vehiculo, id_trabajador, evidencia_b64):
+    if tipo_vehiculo:
+        verificar_hay_lugar(tipo_vehiculo)
     ejecutar_query(
         """INSERT INTO Super_Registros_Manuales
            (nombre_visitante, tipo_identificacion, motivo, placas, marca, modelo,

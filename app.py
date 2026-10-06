@@ -43,6 +43,7 @@ from db import (
     listar_todas_las_placas,
     # === NUEVAS FUNCIONES v2 ===
     obtener_token_qr, regenerar_token_qr, verificar_token_qr, actualizar_placas_tramite,
+    estado_espacio, actualizar_capacidad, recalcular_ocupados, EstacionamientoLleno,
     generar_placas_temporales,
     registrar_entrada_manual, registrar_salida_manual,
     obtener_registros_manuales, contar_registros_manuales_pendientes,
@@ -442,31 +443,39 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
                 st.rerun()
     else:
         st.info("🔵 **NO** está dentro. Se registrará **ENTRADA**.")
+        msg_lleno = _mensaje_lleno(vehiculo['tipo'])
+        if msg_lleno:
+            st.error(f"🚫 {msg_lleno}")
 
         col_a, col_b = st.columns(2)
         with col_a:
-            if st.button("🚗 Registrar ENTRADA", type="primary", use_container_width=True, key="btn_entrada_qr"):
+            if st.button("🚗 Registrar ENTRADA", type="primary", use_container_width=True, key="btn_entrada_qr",
+                         disabled=bool(msg_lleno)):
                 if not confirma:
                     st.error("❌ Confirma que verificaste la identificación.")
                 elif not foto_bytes:
                     st.error("❌ Debes tomar la foto de evidencia.")
                 else:
-                    with st.spinner("💾 Registrando entrada..."):
-                        registrar_entrada(
-                            vehiculo['id_usuario'], vehiculo['id'], vehiculo['tipo'],
-                            user['id'], imagen_a_base64(foto_bytes),
-                            metodo=metodo
-                        )
-                        registrar_log(
-                            user['id'], "REGISTRAR_ENTRADA",
-                            f"Entrada de {vehiculo['placas']} ({vehiculo['nombre_completo']}) por {via}",
-                            "Super_Registros"
-                        )
-                    st.session_state["qr_escaneado_actual"] = None
-                    st.session_state["qr_processor_ref"] = None
-                    st.session_state["qr_foto_auto"] = None
-                    set_flash("success", f"✅ Entrada registrada para {vehiculo['placas']}.")
-                    st.rerun()
+                    try:
+                        with st.spinner("💾 Registrando entrada..."):
+                            registrar_entrada(
+                                vehiculo['id_usuario'], vehiculo['id'], vehiculo['tipo'],
+                                user['id'], imagen_a_base64(foto_bytes),
+                                metodo=metodo
+                            )
+                            registrar_log(
+                                user['id'], "REGISTRAR_ENTRADA",
+                                f"Entrada de {vehiculo['placas']} ({vehiculo['nombre_completo']}) por {via}",
+                                "Super_Registros"
+                            )
+                    except EstacionamientoLleno as e_lleno:
+                        st.error(f"🚫 {e_lleno}")
+                    else:
+                        st.session_state["qr_escaneado_actual"] = None
+                        st.session_state["qr_processor_ref"] = None
+                        st.session_state["qr_foto_auto"] = None
+                        set_flash("success", f"✅ Entrada registrada para {vehiculo['placas']}.")
+                        st.rerun()
         with col_b:
             if st.button("❌ Cancelar", use_container_width=True, key="btn_cancel_qr_entrada"):
                 st.session_state["qr_escaneado_actual"] = None
@@ -645,7 +654,7 @@ def _seccion_escaner_qr(user):
                 elif not foto_man:
                     st.error("La foto de evidencia es obligatoria.")
                 elif (err_man := _validar_entrada_manual(tiene_placas, placas_man,
-                                                         marca_man, modelo_man, color_man)):
+                                                         marca_man, modelo_man, color_man, tipo_v)):
                     st.error(f"❌ {err_man}")
                 else:
                     with st.spinner("Guardando entrada manual..."):
@@ -690,8 +699,11 @@ def _seccion_escaner_qr(user):
                     st.rerun()
 
 
-def _validar_entrada_manual(tiene_placas, placas, marca, modelo, color):
+def _validar_entrada_manual(tiene_placas, placas, marca, modelo, color, tipo_vehiculo=None):
     """Devuelve un texto de error si la entrada sin identificación no debe registrarse; si no, None."""
+    msg_lleno = _mensaje_lleno(tipo_vehiculo) if tipo_vehiculo else None
+    if msg_lleno:
+        return msg_lleno
     limpio = re.sub(r"[^A-Z0-9]", "", str(placas or "").upper())
     if tiene_placas and not limpio:
         return "Escribe las placas o desmarca la casilla."
@@ -1503,20 +1515,68 @@ def pantalla_login():
     st.caption("🔒 Las cuentas son creadas por el administrador.")
 
 
+def _estado_ocupacion(e):
+    """Devuelve (disponibles, capacidad, porcentaje, nivel). nivel: 'ok', 'alto' (>=90%) o 'lleno'."""
+    cap = int(e.get('capacidad_total') or 0)
+    oc = int(e.get('ocupados') or 0)
+    disp = max(0, cap - oc)
+    pct = (oc / cap * 100) if cap > 0 else 100.0
+    if oc >= cap:
+        nivel = 'lleno'
+    elif pct >= 90:
+        nivel = 'alto'
+    else:
+        nivel = 'ok'
+    return disp, cap, pct, nivel
+
+
+def _mensaje_lleno(tipo):
+    """Texto si ya no hay lugares para ese tipo de vehículo (consulta en vivo); si hay lugar, None."""
+    try:
+        e = estado_espacio(tipo)
+    except Exception:
+        return None
+    if e and int(e['ocupados'] or 0) >= int(e['capacidad_total'] or 0):
+        nombre = "autos" if tipo == "Auto" else "motos"
+        return (f"El estacionamiento de {nombre} está LLENO ({e['ocupados']} de {e['capacidad_total']}). "
+                "No se pueden registrar más entradas hasta que salga un vehículo "
+                "o el administrador aumente la capacidad.")
+    return None
+
+
+def _banner_capacidad(autos, motos):
+    """Avisos de 'casi lleno' (90% o más) y 'lleno' para caseta y administrador."""
+    for e, icono, nombre in ((autos, "🚗", "autos"), (motos, "🏍️", "motos")):
+        if not e:
+            continue
+        disp, cap, pct, nivel = _estado_ocupacion(e)
+        if nivel == 'lleno':
+            st.error(f"🚫 {icono} Estacionamiento de {nombre} **LLENO** ({e['ocupados']} de {cap}). "
+                     "No se pueden registrar más entradas.")
+        elif nivel == 'alto':
+            st.warning(f"⚠️ {icono} Estacionamiento de {nombre} casi lleno: quedan **{disp}** lugar(es).")
+
+
 @st.fragment(run_every="15s")
 def _contadores_alumno():
     espacios = obtener_espacios()
     autos = next((e for e in espacios if e['tipo'] == 'Auto'), None)
     motos = next((e for e in espacios if e['tipo'] == 'Moto'), None)
     col1, col2 = st.columns(2)
-    with col1:
-        if autos:
-            disponibles = autos['capacidad_total'] - autos['ocupados']
-            st.markdown(f'<div class="contador-card"><h4>🚗 Autos</h4><div class="numero">{disponibles} de {autos["capacidad_total"]}</div></div>', unsafe_allow_html=True)
-    with col2:
-        if motos:
-            disponibles = motos['capacidad_total'] - motos['ocupados']
-            st.markdown(f'<div class="contador-card"><h4>🏍️ Motos</h4><div class="numero">{disponibles} de {motos["capacidad_total"]}</div></div>', unsafe_allow_html=True)
+    for col, e, icono, titulo in ((col1, autos, "🚗", "Autos"), (col2, motos, "🏍️", "Motos")):
+        with col:
+            if e:
+                disp, cap, pct, nivel = _estado_ocupacion(e)
+                extra = {
+                    'lleno': '<div style="color:#ff6b6b; font-weight:700;">🚫 LLENO</div>',
+                    'alto': '<div style="color:#ffc107; font-weight:700;">⚠️ Casi lleno</div>',
+                    'ok': '',
+                }[nivel]
+                st.markdown(
+                    f'<div class="contador-card"><h4>{icono} {titulo}</h4>'
+                    f'<div class="numero">{disp} de {cap}</div>{extra}</div>',
+                    unsafe_allow_html=True
+                )
 
 
 @st.fragment(run_every="15s")
@@ -1524,11 +1584,63 @@ def _contadores_caseta():
     espacios = obtener_espacios()
     autos = next((e for e in espacios if e['tipo'] == 'Auto'), None)
     motos = next((e for e in espacios if e['tipo'] == 'Moto'), None)
+    _banner_capacidad(autos, motos)
     col1, col2 = st.columns(2)
     with col1:
-        if autos: st.metric("🚗 Autos dentro", f"{autos['ocupados']} / {autos['capacidad_total']}")
+        if autos:
+            disp, cap, _, _ = _estado_ocupacion(autos)
+            st.metric("🚗 Autos dentro", f"{autos['ocupados']} / {cap}", delta=f"{disp} libres", delta_color="off")
     with col2:
-        if motos: st.metric("🏍️ Motos dentro", f"{motos['ocupados']} / {motos['capacidad_total']}")
+        if motos:
+            disp, cap, _, _ = _estado_ocupacion(motos)
+            st.metric("🏍️ Motos dentro", f"{motos['ocupados']} / {cap}", delta=f"{disp} libres", delta_color="off")
+
+
+def _config_capacidad(user):
+    """Panel del administrador para cambiar la capacidad y recalcular la ocupación."""
+    with st.expander("⚙️ Configurar capacidad del estacionamiento"):
+        espacios = {e['tipo']: e for e in obtener_espacios()}
+        st.caption("Define cuántos lugares hay por tipo de vehículo. "
+                   "Cuando se llenan, la caseta ya no puede registrar más entradas.")
+        c1, c2 = st.columns(2)
+        with c1:
+            cap_auto = st.number_input("🚗 Lugares para autos", min_value=0, max_value=10000, step=1,
+                                       value=int(espacios.get('Auto', {}).get('capacidad_total') or 0),
+                                       key="cfg_cap_auto")
+        with c2:
+            cap_moto = st.number_input("🏍️ Lugares para motos", min_value=0, max_value=10000, step=1,
+                                       value=int(espacios.get('Moto', {}).get('capacidad_total') or 0),
+                                       key="cfg_cap_moto")
+        if st.button("💾 Guardar capacidad", type="primary", use_container_width=True, key="cfg_cap_guardar"):
+            todo_ok, hubo_cambio = True, False
+            for tipo, nuevo in (("Auto", int(cap_auto)), ("Moto", int(cap_moto))):
+                actual = espacios.get(tipo)
+                if not actual or int(actual['capacidad_total'] or 0) == nuevo:
+                    continue
+                hubo_cambio = True
+                ok, msg = actualizar_capacidad(tipo, nuevo)
+                if ok:
+                    registrar_log(user['id'], "CAPACIDAD_ACTUALIZADA",
+                                  f"{tipo}: {actual['capacidad_total']} → {nuevo} lugares",
+                                  "Super_Espacios")
+                else:
+                    todo_ok = False
+                    st.error(f"❌ {tipo}: {msg}")
+            if not hubo_cambio:
+                st.info("No hay cambios que guardar.")
+            elif todo_ok:
+                set_flash("success", "✅ Capacidad actualizada.")
+                st.rerun()
+
+        st.markdown("---")
+        st.caption("Si el contador no coincide con los vehículos que realmente están dentro, "
+                   "recalcúlalo a partir de los registros.")
+        if st.button("🔄 Recalcular ocupación real", use_container_width=True, key="cfg_recalcular"):
+            res = recalcular_ocupados()
+            registrar_log(user['id'], "RECALCULAR_OCUPACION",
+                          f"Autos: {res.get('Auto', 0)} | Motos: {res.get('Moto', 0)}", "Super_Espacios")
+            set_flash("success", f"✅ Ocupación recalculada: {res.get('Auto', 0)} autos y {res.get('Moto', 0)} motos dentro.")
+            st.rerun()
 
 
 @st.fragment(run_every="5m")
@@ -1540,6 +1652,18 @@ def _verificar_alertas_programadas(user):
             if not st.session_state.get(clave):
                 st.toast(f"🚨 {len(alertas)} vehículo(s) llevan +12h dentro.", icon="🚨")
                 st.session_state[clave] = True
+    except Exception:
+        pass
+    try:
+        for e in obtener_espacios():
+            disp, cap, pct, nivel = _estado_ocupacion(e)
+            if nivel in ("alto", "lleno"):
+                clave = f"alerta_cap_{e['tipo']}_{nivel}_{date.today().isoformat()}"
+                if not st.session_state.get(clave):
+                    icono = "🚗" if e['tipo'] == 'Auto' else "🏍️"
+                    st.toast(f"{icono} {'LLENO' if nivel == 'lleno' else 'Casi lleno'}: "
+                             f"{e['ocupados']} de {cap} lugares ocupados.", icon="🚫" if nivel == 'lleno' else "⚠️")
+                    st.session_state[clave] = True
     except Exception:
         pass
 
@@ -1568,11 +1692,12 @@ def _dashboard_datos_vivo():
         """, unsafe_allow_html=True)
 
     st.markdown("---")
+    _banner_capacidad(autos, motos)
 
     col1, col2 = st.columns(2)
     with col1:
         if autos:
-            libres = autos['capacidad_total'] - autos['ocupados']
+            libres = max(0, autos['capacidad_total'] - autos['ocupados'])
             st.markdown(f"""
                 <div class="kpi-card">
                     <div class="kpi-label">🚗 Autos dentro</div>
@@ -1582,7 +1707,7 @@ def _dashboard_datos_vivo():
             """, unsafe_allow_html=True)
     with col2:
         if motos:
-            libres = motos['capacidad_total'] - motos['ocupados']
+            libres = max(0, motos['capacidad_total'] - motos['ocupados'])
             st.markdown(f"""
                 <div class="kpi-card">
                     <div class="kpi-label">🏍️ Motos dentro</div>
@@ -1630,8 +1755,8 @@ def _dashboard_datos_vivo():
 
         if autos and motos:
             st.markdown("#### 🍩 Distribución de ocupación")
-            autos_libres = autos['capacidad_total'] - autos['ocupados']
-            motos_libres = motos['capacidad_total'] - motos['ocupados']
+            autos_libres = max(0, autos['capacidad_total'] - autos['ocupados'])
+            motos_libres = max(0, motos['capacidad_total'] - motos['ocupados'])
             fig_dona = grafico_dona_ocupacion(autos['ocupados'], autos_libres, motos['ocupados'], motos_libres)
             st.plotly_chart(fig_dona, use_container_width=True, config={"displayModeBar": False})
 
@@ -2240,6 +2365,7 @@ def panel_admin():
 
     if seccion == "📊 Dashboard":
         _dashboard_datos_vivo()
+        _config_capacidad(user)
 
     elif seccion == "👥 Usuarios":
         st.markdown("### 👥 Gestión de Usuarios")
