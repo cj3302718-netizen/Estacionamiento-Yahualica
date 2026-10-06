@@ -30,7 +30,7 @@ from db import (
     obtener_historial_usuario, contar_visitas_usuario,
     desbloquear_usuario,
     cambiar_password_usuario,
-    actualizar_telefono_usuario,
+    actualizar_telefono_usuario, lugar_asignado_en_uso, completar_datos_perfil,
     limpiar_cache,
     obtener_registros_paginado, contar_registros_filtrados,
     contar_logs_filtrados,
@@ -1146,6 +1146,17 @@ def _validador(nombre):
     }.get(nombre)
 
 
+def _esc_html(texto):
+    return str(texto or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _campos_faltantes(user):
+    """Campos obligatorios de su rol que el usuario aún no tiene: [(clave, config), ...]."""
+    campos = CAMPOS_POR_ROL.get(user.get('rol')) or {}
+    return [(k, c) for k, c in campos.items()
+            if c and c.get("req") and not str(user.get(k) or "").strip()]
+
+
 def _validar_lugar_asignado(lugar):
     if not lugar or not lugar.strip():
         return True, ""
@@ -1498,9 +1509,40 @@ def cerrar_sesion():
 
 
 def mostrar_mi_cuenta(user):
-    with st.expander("🔧 Mi cuenta — Contraseña y contacto"):
+    faltan_datos = [(k, c) for k, c in _campos_faltantes(user) if k != "telefono"]
+    with st.expander("🔧 Mi cuenta — Contraseña y contacto", expanded=bool(faltan_datos)):
+        if faltan_datos:
+            st.markdown("#### 📝 Completar mis datos")
+            st.caption("Estos datos están vacíos. Complétalos una sola vez; "
+                       "después solo el administrador puede modificarlos.")
+            nuevos, validos = {}, []
+            for k, c in faltan_datos:
+                v = st.text_input(c["label"], key=f"cd_{k}_{user['id']}")
+                nuevos[k] = v.strip()
+                ok_campo = mostrar_validacion(v, _validador(c["validador"]), obligatorio=True)
+                if ok_campo and k == "id_estudiante" and id_estudiante_existe(v.strip()):
+                    st.markdown('<div class="val-error">❌ Ese ID / número de empleado ya está en uso</div>',
+                                unsafe_allow_html=True)
+                    ok_campo = False
+                validos.append(ok_campo)
+            if st.button("💾 Guardar mis datos", use_container_width=True, type="primary",
+                         disabled=not all(validos), key=f"cd_btn_{user['id']}"):
+                ok, msg = completar_datos_perfil(user['id'], nuevos)
+                if ok:
+                    for k, v in nuevos.items():
+                        st.session_state.usuario[k] = v
+                    registrar_log(user['id'], "COMPLETAR_PERFIL",
+                                  f"@{user['usuario']} completó: {', '.join(nuevos)}",
+                                  "Super_Usuarios", user['id'])
+                    limpiar_campos([f"cd_{k}_{user['id']}" for k in nuevos])
+                    set_flash("success", f"✅ {msg}")
+                    st.rerun()
+                else:
+                    st.error(f"❌ {msg}")
+            st.markdown("---")
+
         st.markdown("#### 📱 Actualizar mi teléfono")
-        st.caption("Solo el teléfono puede ser editado por ti. Otros datos son oficiales.")
+        st.caption("Puedes cambiar tu teléfono. Los demás datos ya registrados los modifica el administrador.")
 
         tel_actual = user.get('telefono') or ""
         st.caption(f"Teléfono actual registrado: **{tel_actual if tel_actual else '(sin teléfono)'}**")
@@ -2152,6 +2194,12 @@ def panel_alumno():
     if no_leidos > 0:
         st.info(f"💬 Tienes **{no_leidos}** mensaje(s) sin leer. Revisa la sección Mensajes abajo.")
 
+    faltan_perfil = _campos_faltantes(user)
+    if faltan_perfil:
+        st.warning("📝 Tu perfil está incompleto. Falta: **"
+                   + ", ".join(c["label"] for _, c in faltan_perfil)
+                   + "**. Complétalo en **🔧 Mi cuenta**.")
+
     with st.expander("👤 Ver mi perfil"):
         st.write(f"**Usuario:** {user['usuario']}")
         st.write(f"**Rol:** {nombre_rol}")
@@ -2632,7 +2680,17 @@ def panel_admin():
                             unsafe_allow_html=True)
                 id_unico = False
 
-            todos_ok = all(checks.values()) and usuario_unico and id_unico
+            lugar_unico = True
+            if vals.get("lugar_asignado") and checks.get("lugar_asignado"):
+                dueno_lugar = lugar_asignado_en_uso(vals["lugar_asignado"])
+                if dueno_lugar:
+                    st.markdown(
+                        f'<div class="val-error">❌ El lugar {_esc_html(vals["lugar_asignado"].upper())} '
+                        f'ya está asignado a {_esc_html(dueno_lugar["nombre_completo"])}</div>',
+                        unsafe_allow_html=True)
+                    lugar_unico = False
+
+            todos_ok = all(checks.values()) and usuario_unico and id_unico and lugar_unico
 
             etiqueta_boton = f"✅ Crear {_nombre_rol(rol_destino)}"
             if st.button(etiqueta_boton, use_container_width=True, type="primary",
@@ -2653,7 +2711,7 @@ def panel_admin():
                             grupo=vals.get("grupo") or None,
                             telefono=vals.get("telefono") or None,
                             id_estudiante=vals.get("id_estudiante") or None,
-                            lugar_asignado=vals.get("lugar_asignado") or None,
+                            lugar_asignado=(vals.get("lugar_asignado") or "").upper() or None,
                         )
                         registrar_log(
                             user['id'], f"CREAR_{rol_destino.upper()}",
@@ -2786,6 +2844,10 @@ def panel_admin():
                                 st.caption(f"Área: {u['carrera'] or 'N/A'}")
                             if u.get('lugar_asignado'):
                                 st.caption(f"🅿️ Lugar asignado: {u['lugar_asignado']}")
+                            if u['rol'] in ROLES_CON_VEHICULO:
+                                _falta_u = _campos_faltantes(u)
+                                if _falta_u:
+                                    st.caption("⚠️ **Datos incompletos:** " + ", ".join(c["label"] for _, c in _falta_u))
 
                         with c2:
                             if st.button("✏️", key=f"edit_{u['id']}", help="Editar",
@@ -2962,6 +3024,14 @@ def panel_admin():
                             ed_lugar_ok = mostrar_validacion(
                                 ed_lugar, _validar_lugar_asignado, obligatorio=False
                             )
+                            if ed_lugar_ok and ed_lugar.strip():
+                                dueno_lugar = lugar_asignado_en_uso(ed_lugar, excluir_id=u['id'])
+                                if dueno_lugar:
+                                    st.markdown(
+                                        f'<div class="val-error">❌ El lugar {_esc_html(ed_lugar.strip().upper())} '
+                                        f'ya está asignado a {_esc_html(dueno_lugar["nombre_completo"])}</div>',
+                                        unsafe_allow_html=True)
+                                    ed_lugar_ok = False
 
                         st.markdown("##### 🔐 Cambiar contraseña *(opcional)*")
                         ed_pass = st.text_input("Nueva contraseña", type="password",
@@ -3009,7 +3079,7 @@ def panel_admin():
                                             id_estudiante=ed_id.strip() or None if ed_id else None,
                                             tipo_usuario=u['tipo_usuario'],
                                             nueva_password=ed_pass if ed_pass else None,
-                                            lugar_asignado=ed_lugar.strip() or None if ed_lugar else None,
+                                            lugar_asignado=ed_lugar.strip().upper() or None if ed_lugar else None,
                                         )
                                         detalle = f"Usuario @{u['usuario']} editado"
                                         if cambios: detalle += " — " + "; ".join(cambios)
@@ -3156,9 +3226,31 @@ def panel_admin():
             else:
                 st.info("Aún no hay registros completados.")
 
-            st.markdown("#### 🎓 Uso por carrera")
-            por_carrera = df[df['carrera'].notna()].groupby('carrera').size().reset_index(name='usos')
+            df['rol'] = df['rol'].fillna('alumno')
+            df['perfil'] = df['rol'].map(_nombre_rol)
+
+            st.markdown("#### 👥 Uso por tipo de usuario")
+            por_perfil = df.groupby('perfil').size().reset_index(name='usos')
+            st.bar_chart(por_perfil.set_index('perfil')['usos'])
+            comp_perfil = df.dropna(subset=['hora_salida']).copy()
+            if not comp_perfil.empty:
+                comp_perfil['duracion_min'] = (comp_perfil['hora_salida'] - comp_perfil['hora_entrada']).dt.total_seconds() / 60
+                perm_perfil = comp_perfil.groupby('perfil')['duracion_min'].mean()
+                cols_perfil = st.columns(max(1, len(perm_perfil)))
+                for col_p, (nombre_p, minutos_p) in zip(cols_perfil, perm_perfil.items()):
+                    with col_p:
+                        st.metric(f"⏱️ {nombre_p}", f"{minutos_p:.1f} min")
+
+            st.markdown("#### 🎓 Uso por carrera (alumnos)")
+            por_carrera = df[(df['rol'] == 'alumno') & df['carrera'].notna()].groupby('carrera').size().reset_index(name='usos')
             if not por_carrera.empty: st.bar_chart(por_carrera.set_index('carrera')['usos'])
+
+            st.markdown("#### 🏢 Uso por departamento o área (docentes y administrativos)")
+            por_area = df[df['rol'].isin(['docente', 'administrativo']) & df['carrera'].notna()].groupby('carrera').size().reset_index(name='usos')
+            if not por_area.empty:
+                st.bar_chart(por_area.set_index('carrera')['usos'])
+            else:
+                st.caption("Aún no hay registros de docentes o personal administrativo.")
 
             st.markdown("#### 🚗 Uso por tipo")
             por_tipo = df.groupby('tipo').size().reset_index(name='cantidad')
@@ -3578,7 +3670,6 @@ def panel_admin():
             st.write(f"**Usuario:** {user['usuario']}")
             st.write(f"**Nombre completo:** {user['nombre_completo']}")
             st.write(f"**Rol:** {_nombre_rol(user['rol'])}")
-            st.write(f"**Tipo:** {user['tipo_usuario'] or 'N/A'}")
             st.write(f"**Teléfono:** {user['telefono'] or 'N/A'}")
             st.write(f"**Registrado:** {user['fecha_registro']}")
 
