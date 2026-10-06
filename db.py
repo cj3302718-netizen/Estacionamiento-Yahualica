@@ -166,15 +166,16 @@ def usuario_existe(usuario):
 
 def crear_usuario(usuario, password, rol, tipo_usuario, nombre_completo,
                   matricula=None, carrera=None, grupo=None,
-                  telefono=None, id_estudiante=None):
+                  telefono=None, id_estudiante=None, lugar_asignado=None):
     hashed = hash_password(password)
     ejecutar_query(
         """INSERT INTO Super_Usuarios
            (usuario, password, rol, tipo_usuario, nombre_completo,
-            matricula, carrera, grupo, telefono, id_estudiante, activo, intentos_fallidos)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)""",
+            matricula, carrera, grupo, telefono, id_estudiante,
+            lugar_asignado, activo, intentos_fallidos)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0)""",
         (usuario, hashed, rol, tipo_usuario, nombre_completo,
-         matricula, carrera, grupo, telefono, id_estudiante)
+         matricula, carrera, grupo, telefono, id_estudiante, lugar_asignado)
     )
     limpiar_cache()
 
@@ -256,7 +257,7 @@ def desbloquear_usuario(id_usuario):
 # --- IDs ---
 def generar_siguiente_id(prefijo="ALU"):
     res = ejecutar_query(
-        "SELECT id_estudiante FROM Super_Usuarios WHERE id_estudiante LIKE ? AND rol = 'alumno'",
+        "SELECT id_estudiante FROM Super_Usuarios WHERE id_estudiante LIKE ?",
         (f"{prefijo}-%",), fetch=True
     )
     if not res:
@@ -294,26 +295,28 @@ def id_estudiante_existe_otro(id_estudiante, id_usuario_excluir):
 # --- ACTUALIZACIÓN ---
 def actualizar_usuario(id_usuario, nombre_completo, telefono=None, matricula=None,
                        carrera=None, grupo=None, id_estudiante=None,
-                       tipo_usuario=None, nueva_password=None):
+                       tipo_usuario=None, nueva_password=None, lugar_asignado=None):
     if nueva_password:
         hashed = hash_password(nueva_password)
         ejecutar_query(
             """UPDATE Super_Usuarios
                SET nombre_completo = ?, telefono = ?, matricula = ?, carrera = ?,
-                   grupo = ?, id_estudiante = ?, tipo_usuario = ?, password = ?,
+                   grupo = ?, id_estudiante = ?, tipo_usuario = ?,
+                   lugar_asignado = ?, password = ?,
                    intentos_fallidos = 0, bloqueado_hasta = NULL
                WHERE id = ?""",
             (nombre_completo, telefono, matricula, carrera,
-             grupo, id_estudiante, tipo_usuario, hashed, id_usuario)
+             grupo, id_estudiante, tipo_usuario, lugar_asignado,
+             hashed, id_usuario)
         )
     else:
         ejecutar_query(
             """UPDATE Super_Usuarios
                SET nombre_completo = ?, telefono = ?, matricula = ?, carrera = ?,
-                   grupo = ?, id_estudiante = ?, tipo_usuario = ?
+                   grupo = ?, id_estudiante = ?, tipo_usuario = ?, lugar_asignado = ?
                WHERE id = ?""",
             (nombre_completo, telefono, matricula, carrera,
-             grupo, id_estudiante, tipo_usuario, id_usuario)
+             grupo, id_estudiante, tipo_usuario, lugar_asignado, id_usuario)
         )
     limpiar_cache()
 
@@ -355,7 +358,8 @@ def obtener_todos_usuarios(filtro_rol=None, solo_activos=False):
     return ejecutar_query(
         f"""SELECT id, usuario, rol, tipo_usuario, nombre_completo,
                   matricula, carrera, grupo, telefono, id_estudiante,
-                  fecha_registro, activo, intentos_fallidos, bloqueado_hasta
+                  lugar_asignado, fecha_registro, activo,
+                  intentos_fallidos, bloqueado_hasta
            FROM Super_Usuarios {where} ORDER BY fecha_registro DESC""",
         tuple(params), fetch=True
     )
@@ -367,9 +371,13 @@ def contar_usuarios_por_estado():
            FROM Super_Usuarios GROUP BY rol, activo""",
         fetch=True
     )
-    datos = {"alumno": {"activos": 0, "inactivos": 0},
-             "trabajador": {"activos": 0, "inactivos": 0},
-             "admin": {"activos": 0, "inactivos": 0}}
+    datos = {
+        "alumno":         {"activos": 0, "inactivos": 0},
+        "docente":        {"activos": 0, "inactivos": 0},
+        "administrativo": {"activos": 0, "inactivos": 0},
+        "trabajador":     {"activos": 0, "inactivos": 0},
+        "admin":          {"activos": 0, "inactivos": 0},
+    }
     for r in (res or []):
         rol = r['rol']
         if rol in datos:
@@ -446,7 +454,7 @@ def actualizar_placas_tramite(id_vehiculo, id_usuario, nuevas_placas):
 
 
 def generar_placas_temporales():
-    """Genera un identificador interno TEMP-XXXX que nunca se repite (usa el mayor número existente)."""
+    """Genera un identificador interno TEMP-XXXX que nunca se repite."""
     res = ejecutar_query(
         "SELECT placas FROM Super_Vehiculos WHERE placas LIKE 'TEMP-%'", fetch=True
     ) or []
@@ -477,8 +485,8 @@ def buscar_vehiculos_admin(buscar=None, limite=50):
             f"""SELECT TOP {limite}
                       v.id, v.placas, v.tipo, v.marca, v.modelo, v.color,
                       v.es_tramite, v.identificador_alterno,
-                      u.id AS id_usuario, u.nombre_completo, u.usuario,
-                      u.matricula, u.id_estudiante, u.carrera
+                      u.id AS id_usuario, u.nombre_completo, u.usuario, u.rol,
+                      u.matricula, u.id_estudiante, u.carrera, u.lugar_asignado
                FROM Super_Vehiculos v
                INNER JOIN Super_Usuarios u ON v.id_usuario = u.id
                WHERE v.placas LIKE ?
@@ -486,15 +494,16 @@ def buscar_vehiculos_admin(buscar=None, limite=50):
                   OR u.matricula LIKE ?
                   OR u.id_estudiante LIKE ?
                   OR u.usuario LIKE ?
+                  OR u.lugar_asignado LIKE ?
                ORDER BY v.placas""",
-            (like, like, like, like, like), fetch=True
+            (like, like, like, like, like, like), fetch=True
         )
     return ejecutar_query(
         f"""SELECT TOP {limite}
                   v.id, v.placas, v.tipo, v.marca, v.modelo, v.color,
                   v.es_tramite, v.identificador_alterno,
-                  u.id AS id_usuario, u.nombre_completo, u.usuario,
-                  u.matricula, u.id_estudiante, u.carrera
+                  u.id AS id_usuario, u.nombre_completo, u.usuario, u.rol,
+                  u.matricula, u.id_estudiante, u.carrera, u.lugar_asignado
            FROM Super_Vehiculos v
            INNER JOIN Super_Usuarios u ON v.id_usuario = u.id
            ORDER BY v.placas""",
@@ -563,8 +572,7 @@ def actualizar_capacidad(tipo, nueva_capacidad):
 
 
 def recalcular_ocupados():
-    """Vuelve a calcular la ocupación real contando los vehículos con estado DENTRO
-    (registros normales + entradas manuales). Devuelve {'Auto': n, 'Moto': n}."""
+    """Vuelve a calcular la ocupación real contando los vehículos con estado DENTRO."""
     resultado = {}
     for tipo in ("Auto", "Moto"):
         n = ejecutar_query(
@@ -776,9 +784,8 @@ def regenerar_token_qr(id_usuario):
 
 
 def verificar_token_qr(id_vehiculo, token):
-    """Si el dueño ya generó su token, el QR debe traer ese mismo token: un QR sin token
-    (o con un token anterior) deja de valer. Si el dueño nunca generó token, se aceptan
-    los QR antiguos para no romper los que ya están impresos."""
+    """Si el dueño ya generó su token, el QR debe traer ese mismo token.
+    Si el dueño nunca generó token, se aceptan los QR antiguos."""
     res = ejecutar_query(
         """SELECT u.qr_token FROM Super_Vehiculos v
            INNER JOIN Super_Usuarios u ON v.id_usuario = u.id
@@ -801,8 +808,8 @@ def obtener_vehiculo_por_placas(placas):
     limpio = str(placas).upper().replace("-", "").replace(" ", "").strip()
 
     res = ejecutar_query(
-        """SELECT v.*, u.usuario, u.nombre_completo, u.matricula,
-                  u.id_estudiante, u.carrera, u.grupo, u.telefono
+        """SELECT v.*, u.usuario, u.nombre_completo, u.matricula, u.rol,
+                  u.id_estudiante, u.carrera, u.grupo, u.telefono, u.lugar_asignado
            FROM Super_Vehiculos v
            INNER JOIN Super_Usuarios u ON v.id_usuario = u.id
            WHERE REPLACE(REPLACE(UPPER(v.placas), '-', ''), ' ', '') = ?""",
@@ -820,8 +827,7 @@ def obtener_registro_activo_por_vehiculo(id_vehiculo):
 
 
 def registrar_entrada(id_usuario, id_vehiculo, tipo, id_trabajador, evidencia_b64, metodo=None):
-    """metodo: 'QR' o 'MANUAL' (búsqueda + identificación verificada). Si la columna
-    metodo_ingreso aún no existe, la entrada se guarda igual sin ese dato."""
+    """metodo: 'QR' o 'MANUAL' (búsqueda + identificación verificada)."""
     verificar_hay_lugar(tipo)
     if metodo and _existe_columna_metodo():
         ejecutar_query(
@@ -860,7 +866,7 @@ def registrar_salida(id_registro, tipo, id_trabajador, evidencia_b64):
 def obtener_vehiculos_dentro():
     return ejecutar_query(
         """SELECT r.id AS id_registro, r.hora_entrada, v.placas, v.tipo, v.id AS id_vehiculo,
-                  u.nombre_completo, u.matricula, u.carrera, u.id_estudiante
+                  u.nombre_completo, u.matricula, u.carrera, u.id_estudiante, u.lugar_asignado
            FROM Super_Registros r
            INNER JOIN Super_Vehiculos v ON r.id_vehiculo = v.id
            INNER JOIN Super_Usuarios u ON r.id_usuario = u.id
@@ -1135,15 +1141,19 @@ INDICES_RECOMENDADOS = [
     ("IX_Usuarios_Usuario", "CREATE INDEX IX_Usuarios_Usuario ON Super_Usuarios(usuario)"),
     ("IX_Usuarios_Rol_Activo", "CREATE INDEX IX_Usuarios_Rol_Activo ON Super_Usuarios(rol, activo)"),
     ("IX_Usuarios_IdEstudiante", "CREATE INDEX IX_Usuarios_IdEstudiante ON Super_Usuarios(id_estudiante)"),
+    ("IX_Usuarios_LugarAsignado", "CREATE INDEX IX_Usuarios_LugarAsignado ON Super_Usuarios(lugar_asignado)"),
+    ("IX_Usuarios_QRToken", "CREATE INDEX IX_Usuarios_QRToken ON Super_Usuarios(qr_token)"),
     ("IX_Vehiculos_Placas", "CREATE INDEX IX_Vehiculos_Placas ON Super_Vehiculos(placas)"),
     ("IX_Vehiculos_IdUsuario", "CREATE INDEX IX_Vehiculos_IdUsuario ON Super_Vehiculos(id_usuario)"),
     ("IX_Registros_Estado", "CREATE INDEX IX_Registros_Estado ON Super_Registros(estado)"),
     ("IX_Registros_HoraEntrada", "CREATE INDEX IX_Registros_HoraEntrada ON Super_Registros(hora_entrada DESC)"),
     ("IX_Registros_IdVehiculo", "CREATE INDEX IX_Registros_IdVehiculo ON Super_Registros(id_vehiculo)"),
     ("IX_Registros_IdUsuario", "CREATE INDEX IX_Registros_IdUsuario ON Super_Registros(id_usuario)"),
+    ("IX_Registros_Metodo", "CREATE INDEX IX_Registros_Metodo ON Super_Registros(metodo_ingreso)"),
     ("IX_Logs_Fecha", "CREATE INDEX IX_Logs_Fecha ON Super_Logs(fecha DESC)"),
     ("IX_Logs_Accion", "CREATE INDEX IX_Logs_Accion ON Super_Logs(accion)"),
     ("IX_Mensajes_Destinatario", "CREATE INDEX IX_Mensajes_Destinatario ON Super_Mensajes(id_destinatario, leido)"),
+    ("IX_Manuales_Estado", "CREATE INDEX IX_Manuales_Estado ON Super_Registros_Manuales(estado, validado)"),
 ]
 
 

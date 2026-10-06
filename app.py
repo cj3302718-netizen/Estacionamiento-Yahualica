@@ -41,7 +41,7 @@ from db import (
     obtener_vehiculos_alerta,
     crear_tabla_mensajes, crear_indices,
     listar_todas_las_placas,
-    # === NUEVAS FUNCIONES v2 ===
+    # === v2 ===
     obtener_token_qr, regenerar_token_qr, verificar_token_qr, actualizar_placas_tramite,
     estado_espacio, actualizar_capacidad, recalcular_ocupados, EstacionamientoLleno,
     generar_placas_temporales,
@@ -273,6 +273,7 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
             st.session_state["qr_escaneado_actual"] = None
             st.session_state["qr_processor_ref"] = None
             st.session_state["qr_foto_auto"] = None
+            st.session_state["qr_metodo"] = None
             st.rerun()
         return
 
@@ -298,11 +299,11 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
             st.session_state["qr_escaneado_actual"] = None
             st.session_state["qr_processor_ref"] = None
             st.session_state["qr_foto_auto"] = None
+            st.session_state["qr_metodo"] = None
             st.rerun()
         return
 
     # === VALIDACIÓN DEL TOKEN DEL QR ===
-    # El origen (QR o búsqueda manual) lo fija la app, nunca el contenido del QR.
     metodo = st.session_state.get("qr_metodo") or "QR"
     via = "QR" if metodo == "QR" else "BÚSQUEDA MANUAL (identificación verificada)"
     if metodo == "QR":
@@ -315,6 +316,7 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
                 st.session_state["qr_escaneado_actual"] = None
                 st.session_state["qr_processor_ref"] = None
                 st.session_state["qr_foto_auto"] = None
+                st.session_state["qr_metodo"] = None
                 st.rerun()
             return
 
@@ -323,8 +325,10 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
         st.success("✅ **QR detectado correctamente**")
     else:
         st.info("🪪 Ingreso **sin QR**: confirma la identidad con una credencial.")
-    st.markdown("### 👤 Datos del alumno")
+    st.markdown("### 👤 Datos del propietario")
     icono = "🚗" if vehiculo['tipo'] == 'Auto' else "🏍️"
+    rol_icono = _icono_rol(vehiculo.get('rol', 'alumno'))
+    rol_nombre = _nombre_rol(vehiculo.get('rol', 'alumno'))
 
     with st.container(border=True):
         col_icon, col_info = st.columns([1, 4])
@@ -334,11 +338,17 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
                 unsafe_allow_html=True
             )
         with col_info:
-            st.markdown(f"### {vehiculo['nombre_completo']}")
+            st.markdown(f"### {rol_icono} {vehiculo['nombre_completo']} "
+                        f"<span style='font-size:.7em; color:#A89968;'>({rol_nombre})</span>",
+                        unsafe_allow_html=True)
             col_a, col_b = st.columns(2)
             with col_a:
-                st.markdown(f"**Matrícula:** {vehiculo['matricula'] or 'N/A'}")
-                st.markdown(f"**Carrera:** {vehiculo['carrera'] or 'N/A'}")
+                if vehiculo.get('rol') == 'alumno':
+                    st.markdown(f"**Matrícula:** {vehiculo['matricula'] or 'N/A'}")
+                    st.markdown(f"**Carrera:** {vehiculo['carrera'] or 'N/A'}")
+                else:
+                    st.markdown(f"**N° empleado:** {vehiculo['id_estudiante'] or 'N/A'}")
+                    st.markdown(f"**Área:** {vehiculo['carrera'] or 'N/A'}")
             with col_b:
                 st.markdown(f"**ID:** {vehiculo['id_estudiante'] or 'N/A'}")
                 st.markdown(f"**Grupo:** {vehiculo['grupo'] or 'N/A'}")
@@ -359,6 +369,8 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
                     vehiculo.get('color')
                 ]))
                 st.caption(f"Vehículo: {detalles}")
+            if vehiculo.get('lugar_asignado'):
+                st.info(f"🅿️ **Lugar asignado:** {vehiculo['lugar_asignado']}")
 
     registro_activo = obtener_registro_activo_por_vehiculo(vehiculo['id'])
     accion = "SALIDA" if registro_activo else "ENTRADA"
@@ -400,7 +412,6 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
         elif horas_dentro >= 8:
             st.warning(f"⚠️ Este vehículo lleva **{horas_dentro:.1f}h** dentro.")
 
-        # === FOTO DE ENTRADA PARA COMPARAR ===
         ev_entrada = registro_activo.get('evidencia_entrada')
         if ev_entrada:
             with st.expander("🖼️ Comparar con la foto de ENTRADA (verificar conductor y vehículo)"):
@@ -433,6 +444,7 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
                     st.session_state["qr_escaneado_actual"] = None
                     st.session_state["qr_processor_ref"] = None
                     st.session_state["qr_foto_auto"] = None
+                    st.session_state["qr_metodo"] = None
                     set_flash("success", f"✅ Salida registrada para {vehiculo['placas']}.")
                     st.rerun()
         with col_b:
@@ -440,6 +452,7 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
                 st.session_state["qr_escaneado_actual"] = None
                 st.session_state["qr_processor_ref"] = None
                 st.session_state["qr_foto_auto"] = None
+                st.session_state["qr_metodo"] = None
                 st.rerun()
     else:
         st.info("🔵 **NO** está dentro. Se registrará **ENTRADA**.")
@@ -449,8 +462,8 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
 
         col_a, col_b = st.columns(2)
         with col_a:
-            if st.button("🚗 Registrar ENTRADA", type="primary", use_container_width=True, key="btn_entrada_qr",
-                         disabled=bool(msg_lleno)):
+            if st.button("🚗 Registrar ENTRADA", type="primary", use_container_width=True,
+                         key="btn_entrada_qr", disabled=bool(msg_lleno)):
                 if not confirma:
                     st.error("❌ Confirma que verificaste la identificación.")
                 elif not foto_bytes:
@@ -474,6 +487,7 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
                         st.session_state["qr_escaneado_actual"] = None
                         st.session_state["qr_processor_ref"] = None
                         st.session_state["qr_foto_auto"] = None
+                        st.session_state["qr_metodo"] = None
                         set_flash("success", f"✅ Entrada registrada para {vehiculo['placas']}.")
                         st.rerun()
         with col_b:
@@ -481,6 +495,7 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
                 st.session_state["qr_escaneado_actual"] = None
                 st.session_state["qr_processor_ref"] = None
                 st.session_state["qr_foto_auto"] = None
+                st.session_state["qr_metodo"] = None
                 st.rerun()
 
 
@@ -596,10 +611,10 @@ def _seccion_escaner_qr(user):
 
     # --------- TAB 1: BÚSQUEDA AMPLIADA ---------
     with tabs[0]:
-        st.caption("Busca por placas, nombre, matrícula o ID de estudiante. "
+        st.caption("Busca por placas, nombre, matrícula, ID o lugar asignado. "
                    "Confirma la identidad con credencial escolar u oficial.")
         termino = st.text_input("Buscar vehículo", key="busqueda_amplia_qr",
-                                 placeholder="Ej. ABC-1234, Juan Pérez, 20231234, ALU-0001").strip()
+                                 placeholder="Ej. ABC-1234, Juan Pérez, ALU-0001, A-12").strip()
         if termino:
             with st.spinner("Buscando..."):
                 resultados = buscar_vehiculos_admin(termino, limite=15)
@@ -610,12 +625,15 @@ def _seccion_escaner_qr(user):
                 st.caption(f"**{len(resultados)}** resultado(s):")
                 for r in resultados:
                     icono = "🚗" if r['tipo'] == 'Auto' else "🏍️"
+                    rol_ic = _icono_rol(r.get('rol', 'alumno'))
                     with st.container(border=True):
                         c1, c2 = st.columns([4, 1])
                         with c1:
-                            st.markdown(f"**{icono} {r['placas']}** — {r['nombre_completo']}")
+                            st.markdown(f"**{icono} {r['placas']}** — {rol_ic} {r['nombre_completo']}")
                             st.caption(f"Matrícula: {r['matricula'] or 'N/A'} · "
                                        f"ID: {r['id_estudiante'] or 'N/A'} · @{r['usuario']}")
+                            if r.get('lugar_asignado'):
+                                st.caption(f"🅿️ Lugar: {r['lugar_asignado']}")
                         with c2:
                             if st.button("Seleccionar", key=f"sel_veh_{r['id']}",
                                          use_container_width=True):
@@ -766,12 +784,11 @@ def generar_pdf_reporte(df, titulo, subtitulo=""):
     def _txt(v):
         if v is None or (not isinstance(v, str) and pd.isna(v)):
             return ""
-        return str(v).encode("latin-1", "replace").decode("latin-1")   # evita errores con emojis/símbolos
+        return str(v).encode("latin-1", "replace").decode("latin-1")
 
-    # Ancho proporcional al contenido de cada columna
     pesos = []
     for c in cols:
-        largo = max([len(_txt(c)) * 1.35] + [len(_txt(v)) for v in df[c].head(200)])   # el encabezado va en negritas
+        largo = max([len(_txt(c)) * 1.35] + [len(_txt(v)) for v in df[c].head(200)])
         pesos.append(min(max(largo, 6), 32))
     total_peso = sum(pesos)
     widths = [page_width * p / total_peso for p in pesos]
@@ -1056,6 +1073,90 @@ def limpiar_campos(keys):
             del st.session_state[k]
 
 
+# ============================================================
+# ROLES Y CAMPOS POR ROL
+# ============================================================
+ROLES_VALIDOS = ["alumno", "docente", "administrativo", "trabajador", "admin"]
+ROLES_CON_VEHICULO = ["alumno", "docente", "administrativo"]
+
+CAMPOS_POR_ROL = {
+    "alumno": {
+        "id_estudiante": {"label": "ID Estudiante", "req": True, "validador": "validar_id_estudiante"},
+        "matricula":     {"label": "Matrícula", "req": True, "validador": "validar_matricula"},
+        "carrera":       {"label": "Carrera", "req": True, "validador": "validar_carrera"},
+        "grupo":         {"label": "Grupo", "req": True, "validador": "validar_grupo"},
+        "telefono":      {"label": "Teléfono", "req": True, "validador": "validar_telefono"},
+        "lugar_asignado": {"label": "Lugar asignado (opcional)", "req": False, "validador": None},
+    },
+    "docente": {
+        "id_estudiante": {"label": "Número de empleado", "req": True, "validador": "validar_id_estudiante"},
+        "matricula":     {"label": "Clave docente (opcional)", "req": False, "validador": "validar_matricula"},
+        "carrera":       {"label": "Departamento / Materias", "req": True, "validador": "validar_carrera"},
+        "grupo":         {"label": "Turno (Matutino / Vespertino)", "req": False, "validador": "validar_grupo"},
+        "telefono":      {"label": "Teléfono", "req": True, "validador": "validar_telefono"},
+        "lugar_asignado": {"label": "Lugar asignado (opcional)", "req": False, "validador": None},
+    },
+    "administrativo": {
+        "id_estudiante": {"label": "Número de empleado", "req": True, "validador": "validar_id_estudiante"},
+        "matricula":     {"label": "Clave administrativa (opcional)", "req": False, "validador": "validar_matricula"},
+        "carrera":       {"label": "Área / Departamento", "req": True, "validador": "validar_carrera"},
+        "grupo":         {"label": "Puesto (opcional)", "req": False, "validador": "validar_grupo"},
+        "telefono":      {"label": "Teléfono", "req": True, "validador": "validar_telefono"},
+        "lugar_asignado": {"label": "Lugar asignado (opcional)", "req": False, "validador": None},
+    },
+    "trabajador": {
+        "id_estudiante": None, "matricula": None, "carrera": None, "grupo": None,
+        "telefono":      {"label": "Teléfono (opcional)", "req": False, "validador": "validar_telefono"},
+        "lugar_asignado": None,
+    },
+    "admin": {
+        "id_estudiante": None, "matricula": None, "carrera": None, "grupo": None,
+        "telefono":      {"label": "Teléfono (opcional)", "req": False, "validador": "validar_telefono"},
+        "lugar_asignado": None,
+    },
+}
+
+
+def _icono_rol(rol):
+    return {
+        'alumno': '🎓', 'docente': '📚', 'administrativo': '💼',
+        'trabajador': '👷', 'admin': '👑',
+    }.get(rol, '👤')
+
+
+def _nombre_rol(rol):
+    return {
+        'alumno': 'Alumno', 'docente': 'Docente',
+        'administrativo': 'Administrativo', 'trabajador': 'Trabajador',
+        'admin': 'Administrador',
+    }.get(rol, rol.capitalize())
+
+
+def _validador(nombre):
+    return {
+        "validar_nombre": validar_nombre,
+        "validar_usuario": validar_usuario,
+        "validar_password": validar_password,
+        "validar_telefono": validar_telefono,
+        "validar_matricula": validar_matricula,
+        "validar_id_estudiante": validar_id_estudiante,
+        "validar_carrera": validar_carrera,
+        "validar_grupo": validar_grupo,
+        "validar_placas": validar_placas,
+    }.get(nombre)
+
+
+def _validar_lugar_asignado(lugar):
+    if not lugar or not lugar.strip():
+        return True, ""
+    limpio = lugar.strip().upper()
+    if len(limpio) > 20:
+        return False, "Máximo 20 caracteres (ej. A-12, M-05)."
+    if not re.match(r"^[A-Z0-9\-]{2,20}$", limpio):
+        return False, "Solo letras, números y guiones (ej. A-12)."
+    return True, ""
+
+
 def grafico_dona_ocupacion(autos_ocupados, autos_libres, motos_ocupados, motos_libres):
     labels = ["🚗 Autos", "🏍️ Motos", "Libres"]
     values = [autos_ocupados, motos_ocupados, autos_libres + motos_libres]
@@ -1071,7 +1172,8 @@ def grafico_dona_ocupacion(autos_ocupados, autos_libres, motos_ocupados, motos_l
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font=dict(color=COLOR_CREMA, size=11),
         margin=dict(l=10, r=10, t=10, b=10), height=280, showlegend=True,
-        legend=dict(orientation="h", yanchor="bottom", y=-0.1, xanchor="center", x=0.5, font=dict(size=10, color=COLOR_CREMA)),
+        legend=dict(orientation="h", yanchor="bottom", y=-0.1, xanchor="center", x=0.5,
+                    font=dict(size=10, color=COLOR_CREMA)),
         annotations=[dict(text=f"<b>{autos_ocupados + motos_ocupados}</b><br><span style='font-size:10px'>Ocupados</span>",
                           x=0.5, y=0.5, font=dict(size=18, color=COLOR_DORADO), showarrow=False)]
     )
@@ -1081,15 +1183,20 @@ def grafico_dona_ocupacion(autos_ocupados, autos_libres, motos_ocupados, motos_l
 def grafico_barras_horas(df_horas):
     fig = go.Figure(data=[go.Bar(
         x=df_horas["hora_str"], y=df_horas["entradas"],
-        marker=dict(color=df_horas["entradas"], colorscale=[[0, COLOR_VINO], [1, COLOR_DORADO]], line=dict(color=COLOR_DORADO, width=1)),
-        text=df_horas["entradas"], textposition="outside", textfont=dict(color=COLOR_CREMA, size=10),
+        marker=dict(color=df_horas["entradas"],
+                    colorscale=[[0, COLOR_VINO], [1, COLOR_DORADO]],
+                    line=dict(color=COLOR_DORADO, width=1)),
+        text=df_horas["entradas"], textposition="outside",
+        textfont=dict(color=COLOR_CREMA, size=10),
         hovertemplate="<b>%{x}</b><br>Entradas: %{y}<extra></extra>"
     )])
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font=dict(color=COLOR_CREMA, size=11),
-        xaxis=dict(title="", gridcolor="rgba(201,169,97,0.1)", tickfont=dict(color=COLOR_CREMA, size=10)),
-        yaxis=dict(title="", gridcolor="rgba(201,169,97,0.1)", tickfont=dict(color=COLOR_CREMA, size=10)),
+        xaxis=dict(title="", gridcolor="rgba(201,169,97,0.1)",
+                   tickfont=dict(color=COLOR_CREMA, size=10)),
+        yaxis=dict(title="", gridcolor="rgba(201,169,97,0.1)",
+                   tickfont=dict(color=COLOR_CREMA, size=10)),
         margin=dict(l=10, r=10, t=20, b=10), height=280, showlegend=False
     )
     return fig
@@ -1101,15 +1208,18 @@ def grafico_linea_tendencia(df_dias):
         x=df_dias["fecha_str"], y=df_dias["entradas"],
         mode="lines+markers",
         line=dict(color=COLOR_DORADO, width=3, shape="spline"),
-        marker=dict(color=COLOR_VINO_CLARO, size=10, line=dict(color=COLOR_DORADO, width=2)),
+        marker=dict(color=COLOR_VINO_CLARO, size=10,
+                    line=dict(color=COLOR_DORADO, width=2)),
         fill="tozeroy", fillcolor="rgba(123,27,46,0.25)",
         hovertemplate="<b>%{x}</b><br>Entradas: %{y}<extra></extra>"
     ))
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font=dict(color=COLOR_CREMA, size=11),
-        xaxis=dict(gridcolor="rgba(201,169,97,0.1)", tickfont=dict(color=COLOR_CREMA, size=10)),
-        yaxis=dict(gridcolor="rgba(201,169,97,0.1)", tickfont=dict(color=COLOR_CREMA, size=10)),
+        xaxis=dict(gridcolor="rgba(201,169,97,0.1)",
+                   tickfont=dict(color=COLOR_CREMA, size=10)),
+        yaxis=dict(gridcolor="rgba(201,169,97,0.1)",
+                   tickfont=dict(color=COLOR_CREMA, size=10)),
         margin=dict(l=10, r=10, t=20, b=10), height=280, showlegend=False
     )
     return fig
@@ -1118,15 +1228,20 @@ def grafico_linea_tendencia(df_dias):
 def grafico_barras_carreras(df_carreras):
     fig = go.Figure(data=[go.Bar(
         y=df_carreras["carrera"], x=df_carreras["visitas"], orientation="h",
-        marker=dict(color=df_carreras["visitas"], colorscale=[[0, COLOR_VINO], [1, COLOR_DORADO]], line=dict(color=COLOR_DORADO, width=1)),
-        text=df_carreras["visitas"], textposition="outside", textfont=dict(color=COLOR_CREMA, size=10),
+        marker=dict(color=df_carreras["visitas"],
+                    colorscale=[[0, COLOR_VINO], [1, COLOR_DORADO]],
+                    line=dict(color=COLOR_DORADO, width=1)),
+        text=df_carreras["visitas"], textposition="outside",
+        textfont=dict(color=COLOR_CREMA, size=10),
         hovertemplate="<b>%{y}</b><br>Visitas: %{x}<extra></extra>"
     )])
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font=dict(color=COLOR_CREMA, size=11),
-        xaxis=dict(gridcolor="rgba(201,169,97,0.1)", tickfont=dict(color=COLOR_CREMA, size=10)),
-        yaxis=dict(gridcolor="rgba(201,169,97,0.1)", tickfont=dict(color=COLOR_CREMA, size=10)),
+        xaxis=dict(gridcolor="rgba(201,169,97,0.1)",
+                   tickfont=dict(color=COLOR_CREMA, size=10)),
+        yaxis=dict(gridcolor="rgba(201,169,97,0.1)",
+                   tickfont=dict(color=COLOR_CREMA, size=10)),
         margin=dict(l=10, r=10, t=20, b=10), height=280, showlegend=False
     )
     return fig
@@ -1180,15 +1295,17 @@ def generar_pdf_qr(user, vehiculo, qr_bytes):
 
     pdf.set_font("Helvetica", "B", 12)
     pdf.set_text_color(123, 27, 46)
-    pdf.cell(0, 7, "Datos del Alumno", ln=1)
+    pdf.cell(0, 7, "Datos del Propietario", ln=1)
     pdf.set_font("Helvetica", "", 10)
     pdf.set_text_color(40, 40, 40)
     for etiqueta, valor in [
         ("Nombre completo:", user.get('nombre_completo') or 'N/A'),
-        ("ID Estudiante:", user.get('id_estudiante') or 'N/A'),
-        ("Matrícula:", user.get('matricula') or 'N/A'),
-        ("Carrera:", user.get('carrera') or 'N/A'),
-        ("Grupo:", user.get('grupo') or 'N/A'),
+        ("Rol:", _nombre_rol(user.get('rol', 'alumno'))),
+        ("ID / N° empleado:", user.get('id_estudiante') or 'N/A'),
+        ("Matrícula / Clave:", user.get('matricula') or 'N/A'),
+        ("Carrera / Área:", user.get('carrera') or 'N/A'),
+        ("Grupo / Turno:", user.get('grupo') or 'N/A'),
+        ("Lugar asignado:", user.get('lugar_asignado') or 'N/A'),
     ]:
         pdf.cell(45, 6, etiqueta, border=0)
         pdf.set_font("Helvetica", "B", 10)
@@ -1258,6 +1375,8 @@ if 'qr_processor_ref' not in st.session_state:
     st.session_state.qr_processor_ref = None
 if 'qr_foto_auto' not in st.session_state:
     st.session_state.qr_foto_auto = None
+if 'qr_metodo' not in st.session_state:
+    st.session_state.qr_metodo = None
 
 if 'tabla_mensajes_ok' not in st.session_state:
     try:
@@ -1374,6 +1493,7 @@ def cerrar_sesion():
     st.session_state.qr_escaneado_actual = None
     st.session_state.qr_processor_ref = None
     st.session_state.qr_foto_auto = None
+    st.session_state.qr_metodo = None
     st.rerun()
 
 
@@ -1515,8 +1635,11 @@ def pantalla_login():
     st.caption("🔒 Las cuentas son creadas por el administrador.")
 
 
+# ============================================================
+# HELPERS DE OCUPACIÓN
+# ============================================================
 def _estado_ocupacion(e):
-    """Devuelve (disponibles, capacidad, porcentaje, nivel). nivel: 'ok', 'alto' (>=90%) o 'lleno'."""
+    """(disponibles, capacidad, %, nivel) con nivel en 'ok', 'alto' o 'lleno'."""
     cap = int(e.get('capacidad_total') or 0)
     oc = int(e.get('ocupados') or 0)
     disp = max(0, cap - oc)
@@ -1531,7 +1654,6 @@ def _estado_ocupacion(e):
 
 
 def _mensaje_lleno(tipo):
-    """Texto si ya no hay lugares para ese tipo de vehículo (consulta en vivo); si hay lugar, None."""
     try:
         e = estado_espacio(tipo)
     except Exception:
@@ -1545,7 +1667,6 @@ def _mensaje_lleno(tipo):
 
 
 def _banner_capacidad(autos, motos):
-    """Avisos de 'casi lleno' (90% o más) y 'lleno' para caseta y administrador."""
     for e, icono, nombre in ((autos, "🚗", "autos"), (motos, "🏍️", "motos")):
         if not e:
             continue
@@ -1557,6 +1678,9 @@ def _banner_capacidad(autos, motos):
             st.warning(f"⚠️ {icono} Estacionamiento de {nombre} casi lleno: quedan **{disp}** lugar(es).")
 
 
+# ============================================================
+# FRAGMENTS: CONTADORES Y ALERTAS
+# ============================================================
 @st.fragment(run_every="15s")
 def _contadores_alumno():
     espacios = obtener_espacios()
@@ -1589,15 +1713,16 @@ def _contadores_caseta():
     with col1:
         if autos:
             disp, cap, _, _ = _estado_ocupacion(autos)
-            st.metric("🚗 Autos dentro", f"{autos['ocupados']} / {cap}", delta=f"{disp} libres", delta_color="off")
+            st.metric("🚗 Autos dentro", f"{autos['ocupados']} / {cap}",
+                      delta=f"{disp} libres", delta_color="off")
     with col2:
         if motos:
             disp, cap, _, _ = _estado_ocupacion(motos)
-            st.metric("🏍️ Motos dentro", f"{motos['ocupados']} / {cap}", delta=f"{disp} libres", delta_color="off")
+            st.metric("🏍️ Motos dentro", f"{motos['ocupados']} / {cap}",
+                      delta=f"{disp} libres", delta_color="off")
 
 
 def _config_capacidad(user):
-    """Panel del administrador para cambiar la capacidad y recalcular la ocupación."""
     with st.expander("⚙️ Configurar capacidad del estacionamiento"):
         espacios = {e['tipo']: e for e in obtener_espacios()}
         st.caption("Define cuántos lugares hay por tipo de vehículo. "
@@ -1638,8 +1763,11 @@ def _config_capacidad(user):
         if st.button("🔄 Recalcular ocupación real", use_container_width=True, key="cfg_recalcular"):
             res = recalcular_ocupados()
             registrar_log(user['id'], "RECALCULAR_OCUPACION",
-                          f"Autos: {res.get('Auto', 0)} | Motos: {res.get('Moto', 0)}", "Super_Espacios")
-            set_flash("success", f"✅ Ocupación recalculada: {res.get('Auto', 0)} autos y {res.get('Moto', 0)} motos dentro.")
+                          f"Autos: {res.get('Auto', 0)} | Motos: {res.get('Moto', 0)}",
+                          "Super_Espacios")
+            set_flash("success",
+                      f"✅ Ocupación recalculada: {res.get('Auto', 0)} autos y "
+                      f"{res.get('Moto', 0)} motos dentro.")
             st.rerun()
 
 
@@ -1661,13 +1789,19 @@ def _verificar_alertas_programadas(user):
                 clave = f"alerta_cap_{e['tipo']}_{nivel}_{date.today().isoformat()}"
                 if not st.session_state.get(clave):
                     icono = "🚗" if e['tipo'] == 'Auto' else "🏍️"
-                    st.toast(f"{icono} {'LLENO' if nivel == 'lleno' else 'Casi lleno'}: "
-                             f"{e['ocupados']} de {cap} lugares ocupados.", icon="🚫" if nivel == 'lleno' else "⚠️")
+                    st.toast(
+                        f"{icono} {'LLENO' if nivel == 'lleno' else 'Casi lleno'}: "
+                        f"{e['ocupados']} de {cap} lugares ocupados.",
+                        icon="🚫" if nivel == 'lleno' else "⚠️"
+                    )
                     st.session_state[clave] = True
     except Exception:
         pass
 
 
+# ============================================================
+# DASHBOARD ADMIN
+# ============================================================
 @st.fragment(run_every="15s")
 def _dashboard_datos_vivo():
     espacios = obtener_espacios()
@@ -1757,7 +1891,8 @@ def _dashboard_datos_vivo():
             st.markdown("#### 🍩 Distribución de ocupación")
             autos_libres = max(0, autos['capacidad_total'] - autos['ocupados'])
             motos_libres = max(0, motos['capacidad_total'] - motos['ocupados'])
-            fig_dona = grafico_dona_ocupacion(autos['ocupados'], autos_libres, motos['ocupados'], motos_libres)
+            fig_dona = grafico_dona_ocupacion(autos['ocupados'], autos_libres,
+                                              motos['ocupados'], motos_libres)
             st.plotly_chart(fig_dona, use_container_width=True, config={"displayModeBar": False})
 
         st.markdown("#### ⏰ Horas de mayor demanda (últimos 7 días)")
@@ -1841,12 +1976,17 @@ def _dashboard_datos_vivo():
                 with col_a:
                     st.markdown(f"**{icono} {v['placas']}** — {v['nombre_completo']}")
                     st.caption(f"Matrícula: {v['matricula'] or 'N/A'} | Entrada: {v['hora_entrada']}")
+                    if v.get('lugar_asignado'):
+                        st.caption(f"🅿️ Lugar: {v['lugar_asignado']}")
                 with col_b:
                     st.markdown(obtener_badge_alerta(horas), unsafe_allow_html=True)
 
 
+# ============================================================
+# LISTA DE VEHÍCULOS DENTRO (caseta)
+# ============================================================
 def _render_lista_vehiculos_dentro(user):
-    # ==== VEHÍCULOS CON ENTRADA MANUAL (SIN IDENTIFICACIÓN) ====
+    # ==== VEHÍCULOS CON ENTRADA MANUAL ====
     manuales = obtener_vehiculos_manuales_dentro()
     if manuales:
         st.markdown(f"#### 🆘 Vehículos con entrada manual ({len(manuales)})")
@@ -1917,7 +2057,8 @@ def _render_lista_vehiculos_dentro(user):
         dentro_filtrado = [v for v in dentro if
                            t in (v['placas'] or '').lower() or
                            t in (v['nombre_completo'] or '').lower() or
-                           t in (v['matricula'] or '').lower()]
+                           t in (v['matricula'] or '').lower() or
+                           t in ((v.get('lugar_asignado') or '')).lower()]
         if len(dentro_filtrado) < len(dentro):
             st.caption(f"🔎 **{len(dentro_filtrado)}** de **{len(dentro)}** para '{buscar}'")
         dentro = dentro_filtrado
@@ -1927,9 +2068,11 @@ def _render_lista_vehiculos_dentro(user):
         if criticos or advertencias:
             c1, c2 = st.columns(2)
             with c1:
-                if criticos: st.markdown(f'<div class="alert-badge critico">🚨 {criticos} con +12h dentro</div>', unsafe_allow_html=True)
+                if criticos:
+                    st.markdown(f'<div class="alert-badge critico">🚨 {criticos} con +12h dentro</div>', unsafe_allow_html=True)
             with c2:
-                if advertencias: st.markdown(f'<div class="alert-badge advertencia">⚠️ {advertencias} con +8h dentro</div>', unsafe_allow_html=True)
+                if advertencias:
+                    st.markdown(f'<div class="alert-badge advertencia">⚠️ {advertencias} con +8h dentro</div>', unsafe_allow_html=True)
         st.write(f"**Total: {len(dentro)}**")
 
     if not dentro:
@@ -1945,6 +2088,8 @@ def _render_lista_vehiculos_dentro(user):
                 st.markdown(f"**{icono} {v['placas']}** — {v['nombre_completo']}")
                 st.caption(f"Matrícula: {v['matricula'] or 'N/A'}")
                 st.caption(f"Entrada: {v['hora_entrada']}")
+                if v.get('lugar_asignado'):
+                    st.caption(f"🅿️ Lugar: {v['lugar_asignado']}")
             with col_badge:
                 st.markdown(obtener_badge_alerta(horas), unsafe_allow_html=True)
 
@@ -1960,7 +2105,8 @@ def _render_lista_vehiculos_dentro(user):
             foto_sal = st.camera_input(f"Evidencia — {v['placas']}", key=f"cam_sal_{v['id_registro']}")
             c1, c2 = st.columns(2)
             with c1:
-                if st.button("✅ Confirmar", key=f"conf_sal_{v['id_registro']}", type="primary", use_container_width=True):
+                if st.button("✅ Confirmar", key=f"conf_sal_{v['id_registro']}",
+                             type="primary", use_container_width=True):
                     if not foto_sal:
                         st.error("Toma la foto de evidencia.")
                     else:
@@ -1974,7 +2120,8 @@ def _render_lista_vehiculos_dentro(user):
                         set_flash("success", f"✅ Salida registrada para {v['placas']}.")
                         st.rerun()
             with c2:
-                if st.button("❌ Cancelar", key=f"canc_sal_{v['id_registro']}", use_container_width=True):
+                if st.button("❌ Cancelar", key=f"canc_sal_{v['id_registro']}",
+                             use_container_width=True):
                     st.session_state[f"salida_rapida_{v['id_registro']}"] = False
                     st.rerun()
 
@@ -1990,11 +2137,14 @@ def _render_dentro_manual(user):
 
 
 # ============================================================
-# PANEL ALUMNO
+# PANEL ALUMNO / DOCENTE / ADMINISTRATIVO
 # ============================================================
 def panel_alumno():
     user = st.session_state.usuario
-    st.markdown(f'<div class="panel-header">🎓 Alumno — {user["nombre_completo"]}</div>', unsafe_allow_html=True)
+    icono_rol = _icono_rol(user['rol'])
+    nombre_rol = _nombre_rol(user['rol'])
+    st.markdown(f'<div class="panel-header">{icono_rol} {nombre_rol} — {user["nombre_completo"]}</div>',
+                unsafe_allow_html=True)
     mostrar_flash()
     notificar_entrada_reciente(user)
 
@@ -2004,11 +2154,19 @@ def panel_alumno():
 
     with st.expander("👤 Ver mi perfil"):
         st.write(f"**Usuario:** {user['usuario']}")
-        st.write(f"**ID Estudiante:** {user['id_estudiante'] or 'N/A'}")
-        st.write(f"**Matrícula:** {user['matricula'] or 'N/A'}")
-        st.write(f"**Carrera:** {user['carrera'] or 'N/A'}")
-        st.write(f"**Grupo:** {user['grupo'] or 'N/A'}")
+        st.write(f"**Rol:** {nombre_rol}")
+        st.write(f"**ID / N° empleado:** {user['id_estudiante'] or 'N/A'}")
+        if user['rol'] == 'alumno':
+            st.write(f"**Matrícula:** {user['matricula'] or 'N/A'}")
+            st.write(f"**Carrera:** {user['carrera'] or 'N/A'}")
+            st.write(f"**Grupo:** {user['grupo'] or 'N/A'}")
+        elif user['rol'] in ('docente', 'administrativo'):
+            st.write(f"**Departamento/Área:** {user['carrera'] or 'N/A'}")
+            if user['grupo']:
+                st.write(f"**Turno/Puesto:** {user['grupo']}")
         st.write(f"**Teléfono:** {user['telefono'] or 'N/A'}")
+        if user.get('lugar_asignado'):
+            st.write(f"**🅿️ Lugar asignado:** {user['lugar_asignado']}")
 
     mostrar_mi_cuenta(user)
 
@@ -2029,7 +2187,8 @@ def panel_alumno():
                     with st.expander("Ver mensaje"):
                         st.write(m['cuerpo'])
                         if not m['leido']:
-                            if st.button("✅ Marcar como leído", key=f"al_leido_{m['id']}", use_container_width=True):
+                            if st.button("✅ Marcar como leído", key=f"al_leido_{m['id']}",
+                                         use_container_width=True):
                                 marcar_mensaje_leido(m['id'])
                                 st.rerun()
 
@@ -2082,9 +2241,13 @@ def panel_alumno():
                                 token = regenerar_token_qr(user['id'])
                             qr_data = {
                                 "id_usuario": user['id'], "usuario": user['usuario'],
-                                "nombre": user['nombre_completo'], "id_estudiante": user['id_estudiante'],
-                                "matricula": user['matricula'], "carrera": user['carrera'],
-                                "grupo": user['grupo'], "id_vehiculo": v['id'],
+                                "nombre": user['nombre_completo'],
+                                "id_estudiante": user['id_estudiante'],
+                                "matricula": user['matricula'],
+                                "carrera": user['carrera'],
+                                "grupo": user['grupo'],
+                                "rol": user['rol'],
+                                "id_vehiculo": v['id'],
                                 "tipo": v['tipo'], "placas": v['placas'],
                                 "token": token,
                             }
@@ -2124,13 +2287,15 @@ def panel_alumno():
                         st.caption("Esta acción es permanente y no se puede deshacer.")
                         cs, cn = st.columns(2)
                         with cs:
-                            st.button("✅ Sí, eliminar", key=f"si_del_veh_{v['id']}", type="primary",
-                                      use_container_width=True,
+                            st.button("✅ Sí, eliminar", key=f"si_del_veh_{v['id']}",
+                                      type="primary", use_container_width=True,
                                       on_click=cb_eliminar_vehiculo,
                                       args=(v['id'], user['id'], v['tipo'], v['placas']))
                         with cn:
-                            st.button("❌ Cancelar", key=f"no_del_veh_{v['id']}", use_container_width=True,
-                                      on_click=cb_ocultar_confirm, args=(f"confirmar_elim_veh_{v['id']}",))
+                            st.button("❌ Cancelar", key=f"no_del_veh_{v['id']}",
+                                      use_container_width=True,
+                                      on_click=cb_ocultar_confirm,
+                                      args=(f"confirmar_elim_veh_{v['id']}",))
 
     with st.expander("📜 Mi historial de visitas"):
         total_visitas, visitas_mes = contar_visitas_usuario(user['id'])
@@ -2182,7 +2347,8 @@ def panel_alumno():
                 else:
                     delta = datetime.now() - h['hora_entrada']
                     mins = int(delta.total_seconds() / 60)
-                    duracion_txt = f"{mins} min (en curso)" if mins < 60 else f"{mins // 60}h {mins % 60}min (en curso)"
+                    duracion_txt = (f"{mins} min (en curso)" if mins < 60
+                                    else f"{mins // 60}h {mins % 60}min (en curso)")
 
                 st.markdown(f"""
                     <div class="hist-item" style="border-left-color: {estado_color};">
@@ -2286,7 +2452,7 @@ def panel_alumno():
                 with st.spinner("📄 Generando PDF profesional..."):
                     pdf_bytes = generar_pdf_qr(user, qr_info['vehiculo'], qr_info['imagen'])
                 st.download_button("📄 Descargar PDF", data=pdf_bytes,
-                    file_name=f"CUYPARK_{qr_info['vehiculo']['placas']}_{user['matricula'] or 'alumno'}.pdf",
+                    file_name=f"CUYPARK_{qr_info['vehiculo']['placas']}_{user['matricula'] or 'usuario'}.pdf",
                     mime="application/pdf", use_container_width=True, type="primary")
             except Exception as e:
                 st.error(f"Error al generar el PDF: {e}")
@@ -2314,7 +2480,8 @@ def panel_alumno():
 # ============================================================
 def panel_trabajador():
     user = st.session_state.usuario
-    st.markdown(f'<div class="panel-header">👷 Caseta — {user["nombre_completo"]}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="panel-header">👷 Caseta — {user["nombre_completo"]}</div>',
+                unsafe_allow_html=True)
     mostrar_flash()
     mostrar_mi_cuenta(user)
 
@@ -2332,7 +2499,8 @@ def panel_trabajador():
         auto_refresh = st.toggle("🔄 Auto-actualizar cada 10 segundos", value=False,
             key="auto_refresh_caseta",
             help="La lista se actualizará sola para mostrar nuevos vehículos que entren.")
-        salida_en_curso = any(k.startswith("salida_rapida_") and v for k, v in st.session_state.items())
+        salida_en_curso = any(k.startswith("salida_rapida_") and v
+                              for k, v in st.session_state.items())
 
         if auto_refresh and not salida_en_curso:
             st.caption("🟢 Actualizando automáticamente cada 10 segundos")
@@ -2351,7 +2519,8 @@ def panel_trabajador():
 # ============================================================
 def panel_admin():
     user = st.session_state.usuario
-    st.markdown(f'<div class="panel-header">👑 Admin — {user["nombre_completo"]}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="panel-header">👑 Admin — {user["nombre_completo"]}</div>',
+                unsafe_allow_html=True)
     mostrar_flash()
     _verificar_alertas_programadas(user)
 
@@ -2369,134 +2538,177 @@ def panel_admin():
 
     elif seccion == "👥 Usuarios":
         st.markdown("### 👥 Gestión de Usuarios")
-        sub = st.radio("Acción:", ["🎓 Crear Alumno", "👷 Crear Trabajador", "👑 Crear Admin", "📋 Ver Todos"],
-                       horizontal=True, label_visibility="collapsed")
+        sub = st.radio(
+            "Acción:",
+            ["🎓 Crear Alumno", "📚 Crear Docente", "💼 Crear Administrativo",
+             "👷 Crear Trabajador", "👑 Crear Admin", "📋 Ver Todos"],
+            horizontal=True, label_visibility="collapsed"
+        )
 
-        if sub == "🎓 Crear Alumno":
-            id_sugerido = generar_siguiente_id("ALU")
-            st.info(f"💡 El ID sugerido es **{id_sugerido}**.")
-            u = st.text_input("Usuario", key="ca_u", placeholder="mín. 3 caracteres, sin espacios")
+        def _form_crear_usuario(rol_destino, prefijo):
+            campos = CAMPOS_POR_ROL[rol_destino]
+
+            id_sugerido = ""
+            if campos.get("id_estudiante"):
+                id_sugerido = generar_siguiente_id("EMP" if rol_destino != "alumno" else "ALU")
+                st.info(f"💡 El ID sugerido es **{id_sugerido}**.")
+
+            u = st.text_input("Usuario", key=f"{prefijo}_u",
+                              placeholder="mín. 3 caracteres, sin espacios")
             u_ok = mostrar_validacion(u, validar_usuario)
-            p = st.text_input("Contraseña", type="password", key="ca_p")
+            p = st.text_input("Contraseña", type="password", key=f"{prefijo}_p")
             p_ok = mostrar_validacion(p, validar_password)
-            nombre = st.text_input("Nombre completo", key="ca_n")
+            nombre = st.text_input("Nombre completo", key=f"{prefijo}_n")
             n_ok = mostrar_validacion(nombre, validar_nombre)
-            id_est = st.text_input("ID Estudiante", value=id_sugerido, key="ca_id")
-            id_ok = mostrar_validacion(id_est, validar_id_estudiante)
-            ca, cb = st.columns(2)
-            with ca:
-                mat = st.text_input("Matrícula (opcional)", key="ca_mat")
-                mat_ok = mostrar_validacion(mat, validar_matricula, obligatorio=False)
-                car = st.text_input("Carrera (opcional)", key="ca_car")
-                car_ok = mostrar_validacion(car, validar_carrera, obligatorio=False)
-            with cb:
-                gru = st.text_input("Grupo (opcional)", key="ca_gru")
-                gru_ok = mostrar_validacion(gru, validar_grupo, obligatorio=False)
-                tel = st.text_input("Teléfono (opcional)", key="ca_tel", placeholder="10 dígitos")
-                tel_ok = mostrar_validacion(tel, validar_telefono, obligatorio=False)
+
+            vals = {}
+            checks = {"usuario": u_ok, "password": p_ok, "nombre": n_ok}
+
+            col_a, col_b = st.columns(2)
+            with col_a:
+                if campos.get("id_estudiante"):
+                    c = campos["id_estudiante"]
+                    val = st.text_input(c["label"], value=id_sugerido, key=f"{prefijo}_id")
+                    vals["id_estudiante"] = val.strip() if val else ""
+                    checks["id_estudiante"] = mostrar_validacion(
+                        val, _validador(c["validador"]), obligatorio=c["req"]
+                    )
+            with col_b:
+                if campos.get("matricula"):
+                    c = campos["matricula"]
+                    val = st.text_input(c["label"], key=f"{prefijo}_mat")
+                    vals["matricula"] = val.strip() if val else ""
+                    checks["matricula"] = mostrar_validacion(
+                        val, _validador(c["validador"]), obligatorio=c["req"]
+                    )
+
+            col_c, col_d = st.columns(2)
+            with col_c:
+                if campos.get("carrera"):
+                    c = campos["carrera"]
+                    val = st.text_input(c["label"], key=f"{prefijo}_car")
+                    vals["carrera"] = val.strip() if val else ""
+                    checks["carrera"] = mostrar_validacion(
+                        val, _validador(c["validador"]), obligatorio=c["req"]
+                    )
+            with col_d:
+                if campos.get("grupo"):
+                    c = campos["grupo"]
+                    val = st.text_input(c["label"], key=f"{prefijo}_gru")
+                    vals["grupo"] = val.strip() if val else ""
+                    checks["grupo"] = mostrar_validacion(
+                        val, _validador(c["validador"]), obligatorio=c["req"]
+                    )
+
+            col_e, col_f = st.columns(2)
+            with col_e:
+                if campos.get("telefono"):
+                    c = campos["telefono"]
+                    val = st.text_input(c["label"], key=f"{prefijo}_tel",
+                                        placeholder="10 dígitos (ej. 444-123-4567)")
+                    vals["telefono"] = val.strip() if val else ""
+                    checks["telefono"] = mostrar_validacion(
+                        val, _validador(c["validador"]), obligatorio=c["req"]
+                    )
+            with col_f:
+                if campos.get("lugar_asignado"):
+                    c = campos["lugar_asignado"]
+                    val = st.text_input(c["label"], key=f"{prefijo}_lugar",
+                                        placeholder="Ej. A-12")
+                    vals["lugar_asignado"] = val.strip() if val else ""
+                    checks["lugar_asignado"] = mostrar_validacion(
+                        val, _validar_lugar_asignado, obligatorio=False
+                    )
 
             usuario_unico = True
             if u and u_ok and usuario_existe(u.lower().strip()):
-                st.markdown('<div class="val-error">❌ Ese usuario ya existe</div>', unsafe_allow_html=True)
+                st.markdown('<div class="val-error">❌ Ese usuario ya existe</div>',
+                            unsafe_allow_html=True)
                 usuario_unico = False
             id_unico = True
-            if id_est and id_ok and id_estudiante_existe(id_est.strip()):
-                st.markdown('<div class="val-error">❌ Ese ID ya está en uso</div>', unsafe_allow_html=True)
+            if vals.get("id_estudiante") and checks.get("id_estudiante") \
+                    and id_estudiante_existe(vals["id_estudiante"]):
+                st.markdown('<div class="val-error">❌ Ese ID ya está en uso</div>',
+                            unsafe_allow_html=True)
                 id_unico = False
 
-            todos_ok = u_ok and p_ok and n_ok and id_ok and mat_ok and car_ok and gru_ok and tel_ok and usuario_unico and id_unico
-            if st.button("✅ Crear Alumno", use_container_width=True, type="primary",
-                         disabled=not todos_ok, key="ca_btn"):
+            todos_ok = all(checks.values()) and usuario_unico and id_unico
+
+            etiqueta_boton = f"✅ Crear {_nombre_rol(rol_destino)}"
+            if st.button(etiqueta_boton, use_container_width=True, type="primary",
+                         disabled=not todos_ok, key=f"{prefijo}_btn"):
                 try:
-                    with st.spinner("💾 Creando alumno..."):
-                        crear_usuario(usuario=u.lower().strip(), password=p, rol='alumno',
-                            tipo_usuario='alumno', nombre_completo=nombre.strip(),
-                            matricula=mat.strip() if mat else None,
-                            carrera=car.strip() if car else None,
-                            grupo=gru.strip() if gru else None,
-                            telefono=tel.strip() if tel else None,
-                            id_estudiante=id_est.strip() if id_est else None)
-                        registrar_log(user['id'], "CREAR_ALUMNO",
-                                      f"Alumno @{u.lower().strip()} ({nombre}) creado con ID {id_est}",
-                                      "Super_Usuarios")
-                    limpiar_campos(['ca_u', 'ca_p', 'ca_n', 'ca_id', 'ca_mat', 'ca_car', 'ca_gru', 'ca_tel'])
-                    set_flash("success", f"✅ Alumno **{nombre}** creado con ID **{id_est}**.")
+                    with st.spinner(f"💾 Creando {_nombre_rol(rol_destino).lower()}..."):
+                        tipo_u = "administrativo" if rol_destino in (
+                            "docente", "administrativo", "trabajador", "admin") else "alumno"
+
+                        crear_usuario(
+                            usuario=u.lower().strip(),
+                            password=p,
+                            rol=rol_destino,
+                            tipo_usuario=tipo_u,
+                            nombre_completo=nombre.strip(),
+                            matricula=vals.get("matricula") or None,
+                            carrera=vals.get("carrera") or None,
+                            grupo=vals.get("grupo") or None,
+                            telefono=vals.get("telefono") or None,
+                            id_estudiante=vals.get("id_estudiante") or None,
+                            lugar_asignado=vals.get("lugar_asignado") or None,
+                        )
+                        registrar_log(
+                            user['id'], f"CREAR_{rol_destino.upper()}",
+                            f"{_nombre_rol(rol_destino)} @{u.lower().strip()} ({nombre}) creado"
+                            + (f" — Lugar: {vals.get('lugar_asignado')}" if vals.get("lugar_asignado") else ""),
+                            "Super_Usuarios"
+                        )
+                    limpiar_campos([f"{prefijo}_u", f"{prefijo}_p", f"{prefijo}_n",
+                                    f"{prefijo}_id", f"{prefijo}_mat", f"{prefijo}_car",
+                                    f"{prefijo}_gru", f"{prefijo}_tel", f"{prefijo}_lugar"])
+                    set_flash("success",
+                              f"✅ {_nombre_rol(rol_destino)} **{nombre}** creado.")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Error: {e}")
+
+        if sub == "🎓 Crear Alumno":
+            st.caption("Los datos académicos del alumno son **obligatorios**. "
+                       "Se usarán para identificar al propietario del vehículo.")
+            _form_crear_usuario("alumno", "ca")
+
+        elif sub == "📚 Crear Docente":
+            st.caption("El docente puede registrar vehículo. "
+                       "El **número de empleado**, **departamento** y **teléfono** son obligatorios.")
+            _form_crear_usuario("docente", "cd")
+
+        elif sub == "💼 Crear Administrativo":
+            st.caption("El personal administrativo puede registrar vehículo. "
+                       "El **número de empleado**, **área** y **teléfono** son obligatorios.")
+            _form_crear_usuario("administrativo", "cAdmvo")
 
         elif sub == "👷 Crear Trabajador":
-            u = st.text_input("Usuario", key="ct_u")
-            u_ok = mostrar_validacion(u, validar_usuario)
-            p = st.text_input("Contraseña", type="password", key="ct_p")
-            p_ok = mostrar_validacion(p, validar_password)
-            nombre = st.text_input("Nombre completo", key="ct_n")
-            n_ok = mostrar_validacion(nombre, validar_nombre)
-            tel = st.text_input("Teléfono (opcional)", key="ct_tel", placeholder="10 dígitos")
-            tel_ok = mostrar_validacion(tel, validar_telefono, obligatorio=False)
-
-            usuario_unico = True
-            if u and u_ok and usuario_existe(u.lower().strip()):
-                st.markdown('<div class="val-error">❌ Ese usuario ya existe</div>', unsafe_allow_html=True)
-                usuario_unico = False
-            todos_ok = u_ok and p_ok and n_ok and tel_ok and usuario_unico
-
-            if st.button("✅ Crear Trabajador", use_container_width=True, type="primary",
-                         disabled=not todos_ok, key="ct_btn"):
-                try:
-                    with st.spinner("💾 Creando trabajador..."):
-                        crear_usuario(usuario=u.lower().strip(), password=p, rol='trabajador',
-                            tipo_usuario='administrativo', nombre_completo=nombre.strip(),
-                            telefono=tel.strip() if tel else None)
-                        registrar_log(user['id'], "CREAR_TRABAJADOR",
-                                      f"Trabajador @{u.lower().strip()} ({nombre}) creado", "Super_Usuarios")
-                    limpiar_campos(['ct_u', 'ct_p', 'ct_n', 'ct_tel'])
-                    set_flash("success", f"✅ Trabajador **{nombre}** creado.")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error: {e}")
+            st.caption("Los trabajadores de caseta **no registran vehículo**, "
+                       "solo gestionan entradas y salidas.")
+            _form_crear_usuario("trabajador", "ct")
 
         elif sub == "👑 Crear Admin":
             st.warning("⚠️ Los admins tienen acceso total. Otorga este rol con precaución.")
-            u = st.text_input("Usuario", key="cA_u")
-            u_ok = mostrar_validacion(u, validar_usuario)
-            p = st.text_input("Contraseña", type="password", key="cA_p")
-            p_ok = mostrar_validacion(p, validar_password)
-            nombre = st.text_input("Nombre completo", key="cA_n")
-            n_ok = mostrar_validacion(nombre, validar_nombre)
-            tel = st.text_input("Teléfono (opcional)", key="cA_tel")
-            tel_ok = mostrar_validacion(tel, validar_telefono, obligatorio=False)
-
-            usuario_unico = True
-            if u and u_ok and usuario_existe(u.lower().strip()):
-                st.markdown('<div class="val-error">❌ Ese usuario ya existe</div>', unsafe_allow_html=True)
-                usuario_unico = False
-            todos_ok = u_ok and p_ok and n_ok and tel_ok and usuario_unico
-
-            if st.button("✅ Crear Administrador", use_container_width=True, type="primary",
-                         disabled=not todos_ok, key="cA_btn"):
-                try:
-                    with st.spinner("💾 Creando administrador..."):
-                        crear_usuario(usuario=u.lower().strip(), password=p, rol='admin',
-                            tipo_usuario='administrativo', nombre_completo=nombre.strip(),
-                            telefono=tel.strip() if tel else None)
-                        registrar_log(user['id'], "CREAR_ADMIN",
-                                      f"Administrador @{u.lower().strip()} ({nombre}) creado", "Super_Usuarios")
-                    limpiar_campos(['cA_u', 'cA_p', 'cA_n', 'cA_tel'])
-                    set_flash("success", f"✅ Administrador **{nombre}** creado.")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error: {e}")
+            _form_crear_usuario("admin", "cAdm")
 
         elif sub == "📋 Ver Todos":
             cf1, cf2 = st.columns([2, 1])
             with cf1:
-                filtro = st.selectbox("Filtrar por rol", ["Todos", "alumno", "trabajador", "admin"])
+                filtro = st.selectbox(
+                    "Filtrar por rol",
+                    ["Todos", "alumno", "docente", "administrativo", "trabajador", "admin"]
+                )
             with cf2:
                 solo_activos = st.checkbox("Solo activos", value=False)
 
             with st.spinner("📋 Cargando usuarios..."):
-                usuarios = obtener_todos_usuarios(None if filtro == "Todos" else filtro, solo_activos=solo_activos)
+                usuarios = obtener_todos_usuarios(
+                    None if filtro == "Todos" else filtro,
+                    solo_activos=solo_activos
+                )
 
             if not usuarios:
                 st.info("No hay usuarios que coincidan con el filtro.")
@@ -2520,16 +2732,20 @@ def panel_admin():
                                marker_color='#D7192D', text=df_comp['Inactivos'], textposition='outside'),
                     ])
                     fig_comp.update_layout(
-                        barmode='group', paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                        barmode='group', paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)",
                         font=dict(color=COLOR_CREMA, size=11),
                         xaxis=dict(gridcolor="rgba(201,169,97,0.1)"),
                         yaxis=dict(gridcolor="rgba(201,169,97,0.1)"),
-                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02,
+                                    xanchor="right", x=1),
                         margin=dict(l=10, r=10, t=40, b=10), height=300,
                     )
-                    st.plotly_chart(fig_comp, use_container_width=True, config={"displayModeBar": False})
+                    st.plotly_chart(fig_comp, use_container_width=True,
+                                    config={"displayModeBar": False})
 
-                    if st.button("⚡ Crear índices recomendados en la BD", use_container_width=True, key="btn_indices"):
+                    if st.button("⚡ Crear índices recomendados en la BD",
+                                 use_container_width=True, key="btn_indices"):
                         with st.spinner("Creando índices..."):
                             creados, errores = crear_indices()
                         st.success(f"✅ {len(creados)} índice(s) creado(s) exitosamente.")
@@ -2540,7 +2756,7 @@ def panel_admin():
 
                 for u in usuarios:
                     with st.container(border=True):
-                        icono = {'alumno': '🎓', 'trabajador': '👷', 'admin': '👑'}.get(u['rol'], '👤')
+                        icono = _icono_rol(u['rol'])
                         estado_badge = "🟢" if u['activo'] else "🔒"
 
                         c1, c2, c3, c4, c5 = st.columns([4, 1, 1, 1, 1])
@@ -2562,35 +2778,46 @@ def panel_admin():
                             if intentos > 0 and not bloqueado_activo:
                                 st.caption(f"⚠️ Intentos fallidos recientes: {intentos}/5")
                             if u['id_estudiante']:
-                                st.caption(f"ID: {u['id_estudiante']}")
-                            st.caption(f"Rol: {u['rol']} | Teléfono: {u['telefono'] or 'N/A'}")
+                                st.caption(f"ID / N° empleado: {u['id_estudiante']}")
+                            st.caption(f"Rol: {_nombre_rol(u['rol'])} | Teléfono: {u['telefono'] or 'N/A'}")
                             if u['rol'] == 'alumno':
                                 st.caption(f"Matrícula: {u['matricula'] or 'N/A'} | Carrera: {u['carrera'] or 'N/A'}")
+                            elif u['rol'] in ('docente', 'administrativo'):
+                                st.caption(f"Área: {u['carrera'] or 'N/A'}")
+                            if u.get('lugar_asignado'):
+                                st.caption(f"🅿️ Lugar asignado: {u['lugar_asignado']}")
+
                         with c2:
-                            if st.button("✏️", key=f"edit_{u['id']}", help="Editar", use_container_width=True):
+                            if st.button("✏️", key=f"edit_{u['id']}", help="Editar",
+                                         use_container_width=True):
                                 for other in usuarios:
                                     if other['id'] != u['id']:
                                         st.session_state[f"editando_{other['id']}"] = False
-                                st.session_state[f"editando_{u['id']}"] = not st.session_state.get(f"editando_{u['id']}", False)
+                                st.session_state[f"editando_{u['id']}"] = not st.session_state.get(
+                                    f"editando_{u['id']}", False
+                                )
                                 st.rerun()
                         with c3:
                             if u['id'] == user['id']:
                                 st.caption("(Tú)")
                             else:
                                 if u['activo']:
-                                    st.button("🔒", key=f"lock_{u['id']}", help="Desactivar cuenta",
-                                              use_container_width=True,
-                                              on_click=cb_mostrar_confirm, args=(f"confirmar_desactivar_{u['id']}",))
+                                    st.button("🔒", key=f"lock_{u['id']}",
+                                              help="Desactivar cuenta", use_container_width=True,
+                                              on_click=cb_mostrar_confirm,
+                                              args=(f"confirmar_desactivar_{u['id']}",))
                                 else:
-                                    st.button("🔓", key=f"unlock_{u['id']}", help="Reactivar cuenta",
-                                              use_container_width=True,
+                                    st.button("🔓", key=f"unlock_{u['id']}",
+                                              help="Reactivar cuenta", use_container_width=True,
                                               on_click=cb_activar_usuario,
-                                              args=(u['id'], user['id'], user['usuario'], u['usuario'], u['nombre_completo']))
+                                              args=(u['id'], user['id'], user['usuario'],
+                                                    u['usuario'], u['nombre_completo']))
                         with c4:
                             if u['id'] != user['id']:
                                 st.button("🗑️", key=f"del_user_{u['id']}", help="Eliminar",
                                           use_container_width=True,
-                                          on_click=cb_mostrar_confirm, args=(f"confirmar_eliminar_{u['id']}",))
+                                          on_click=cb_mostrar_confirm,
+                                          args=(f"confirmar_eliminar_{u['id']}",))
                         with c5:
                             bloqueado_boton = False
                             if u.get('bloqueado_hasta') and isinstance(u['bloqueado_hasta'], datetime):
@@ -2604,7 +2831,8 @@ def panel_admin():
                                     ok, msg = desbloquear_usuario(u['id'])
                                     if ok:
                                         registrar_log(user['id'], "DESBLOQUEAR_USUARIO",
-                                                      f"Cuenta @{u['usuario']} desbloqueada", "Super_Usuarios", u['id'])
+                                                      f"Cuenta @{u['usuario']} desbloqueada",
+                                                      "Super_Usuarios", u['id'])
                                         set_flash("success", msg)
                                     else:
                                         set_flash("error", msg)
@@ -2617,69 +2845,129 @@ def panel_admin():
                                 if u['rol'] == 'admin':
                                     st.warning("⚠️ **Estás a punto de eliminar a un ADMINISTRADOR.**")
                                     texto = st.text_input("Escribe **ELIMINAR** para confirmar:",
-                                                          key=f"confirma_texto_{u['id']}", placeholder="ELIMINAR")
+                                                          key=f"confirma_texto_{u['id']}",
+                                                          placeholder="ELIMINAR")
                                     conf_ok = (texto.strip() == "ELIMINAR")
                                 else:
                                     conf_ok = True
 
                                 cs, cn = st.columns(2)
                                 with cs:
-                                    st.button("✅ Sí, eliminar", key=f"si_del_{u['id']}", type="primary",
-                                              use_container_width=True, disabled=not conf_ok,
+                                    st.button("✅ Sí, eliminar", key=f"si_del_{u['id']}",
+                                              type="primary", use_container_width=True,
+                                              disabled=not conf_ok,
                                               on_click=cb_eliminar_usuario,
-                                              args=(u['id'], user['id'], user['usuario'], u['usuario'], u['nombre_completo']))
+                                              args=(u['id'], user['id'], user['usuario'],
+                                                    u['usuario'], u['nombre_completo']))
                                 with cn:
-                                    st.button("❌ Cancelar", key=f"no_del_{u['id']}", use_container_width=True,
-                                              on_click=cb_ocultar_confirm, args=(f"confirmar_eliminar_{u['id']}",))
+                                    st.button("❌ Cancelar", key=f"no_del_{u['id']}",
+                                              use_container_width=True,
+                                              on_click=cb_ocultar_confirm,
+                                              args=(f"confirmar_eliminar_{u['id']}",))
 
                         if st.session_state.get(f"confirmar_desactivar_{u['id']}", False):
                             with st.container(border=True):
                                 st.warning(f"🔒 ¿Desactivar la cuenta de **{u['nombre_completo']}** (@{u['usuario']})?")
                                 cs, cn = st.columns(2)
                                 with cs:
-                                    st.button("✅ Sí, desactivar", key=f"si_desc_{u['id']}", type="primary",
-                                              use_container_width=True,
+                                    st.button("✅ Sí, desactivar", key=f"si_desc_{u['id']}",
+                                              type="primary", use_container_width=True,
                                               on_click=cb_desactivar_usuario,
-                                              args=(u['id'], user['id'], user['usuario'], u['usuario'], u['nombre_completo']))
+                                              args=(u['id'], user['id'], user['usuario'],
+                                                    u['usuario'], u['nombre_completo']))
                                 with cn:
-                                    st.button("❌ Cancelar", key=f"no_desc_{u['id']}", use_container_width=True,
-                                              on_click=cb_ocultar_confirm, args=(f"confirmar_desactivar_{u['id']}",))
+                                    st.button("❌ Cancelar", key=f"no_desc_{u['id']}",
+                                              use_container_width=True,
+                                              on_click=cb_ocultar_confirm,
+                                              args=(f"confirmar_desactivar_{u['id']}",))
 
                     if st.session_state.get(f"editando_{u['id']}", False):
                         st.markdown('<div class="edit-form">', unsafe_allow_html=True)
-                        st.markdown(f"#### ✏️ Editando: @{u['usuario']}")
+                        st.markdown(f"#### ✏️ Editando: @{u['usuario']} "
+                                    f"({_icono_rol(u['rol'])} {_nombre_rol(u['rol'])})")
                         st.caption(f"Rol: **{u['rol']}** (no modificable)")
 
-                        ed_nombre = st.text_input("Nombre completo", value=u['nombre_completo'], key=f"ed_n_{u['id']}")
-                        ed_n_ok = mostrar_validacion(ed_nombre, validar_nombre)
-                        ed_tel = st.text_input("Teléfono", value=u['telefono'] or "", key=f"ed_tel_{u['id']}")
-                        ed_tel_ok = mostrar_validacion(ed_tel, validar_telefono, obligatorio=False)
+                        campos_rol = CAMPOS_POR_ROL.get(u['rol'], CAMPOS_POR_ROL["alumno"])
 
-                        if u['rol'] == 'alumno':
+                        ed_nombre = st.text_input("Nombre completo",
+                                                   value=u['nombre_completo'],
+                                                   key=f"ed_n_{u['id']}")
+                        ed_n_ok = mostrar_validacion(ed_nombre, validar_nombre)
+
+                        ed_tel = ""
+                        ed_tel_ok = True
+                        if campos_rol.get("telefono"):
+                            c = campos_rol["telefono"]
+                            ed_tel = st.text_input(c["label"], value=u['telefono'] or "",
+                                                    key=f"ed_tel_{u['id']}")
+                            ed_tel_ok = mostrar_validacion(ed_tel, validar_telefono,
+                                                            obligatorio=c["req"])
+
+                        ed_id = u['id_estudiante']; ed_id_ok = True; ed_id_unico = True
+                        ed_mat = u['matricula'];     ed_mat_ok = True
+                        ed_car = u['carrera'];       ed_car_ok = True
+                        ed_gru = u['grupo'];         ed_gru_ok = True
+
+                        if campos_rol.get("id_estudiante") or campos_rol.get("matricula"):
                             ea, eb = st.columns(2)
                             with ea:
-                                ed_id = st.text_input("ID Estudiante", value=u['id_estudiante'] or "", key=f"ed_id_{u['id']}")
-                                ed_id_ok = mostrar_validacion(ed_id, validar_id_estudiante, obligatorio=False)
-                                ed_mat = st.text_input("Matrícula", value=u['matricula'] or "", key=f"ed_mat_{u['id']}")
-                                ed_mat_ok = mostrar_validacion(ed_mat, validar_matricula, obligatorio=False)
+                                if campos_rol.get("id_estudiante"):
+                                    c = campos_rol["id_estudiante"]
+                                    ed_id = st.text_input(c["label"],
+                                                           value=u['id_estudiante'] or "",
+                                                           key=f"ed_id_{u['id']}")
+                                    ed_id_ok = mostrar_validacion(
+                                        ed_id, validar_id_estudiante, obligatorio=c["req"]
+                                    )
+                                if campos_rol.get("matricula"):
+                                    c = campos_rol["matricula"]
+                                    ed_mat = st.text_input(c["label"],
+                                                            value=u['matricula'] or "",
+                                                            key=f"ed_mat_{u['id']}")
+                                    ed_mat_ok = mostrar_validacion(
+                                        ed_mat, validar_matricula, obligatorio=c["req"]
+                                    )
                             with eb:
-                                ed_car = st.text_input("Carrera", value=u['carrera'] or "", key=f"ed_car_{u['id']}")
-                                ed_car_ok = mostrar_validacion(ed_car, validar_carrera, obligatorio=False)
-                                ed_gru = st.text_input("Grupo", value=u['grupo'] or "", key=f"ed_gru_{u['id']}")
-                                ed_gru_ok = mostrar_validacion(ed_gru, validar_grupo, obligatorio=False)
-                            ed_id_unico = True
+                                if campos_rol.get("carrera"):
+                                    c = campos_rol["carrera"]
+                                    ed_car = st.text_input(c["label"],
+                                                            value=u['carrera'] or "",
+                                                            key=f"ed_car_{u['id']}")
+                                    ed_car_ok = mostrar_validacion(
+                                        ed_car, validar_carrera, obligatorio=c["req"]
+                                    )
+                                if campos_rol.get("grupo"):
+                                    c = campos_rol["grupo"]
+                                    ed_gru = st.text_input(c["label"],
+                                                            value=u['grupo'] or "",
+                                                            key=f"ed_gru_{u['id']}")
+                                    ed_gru_ok = mostrar_validacion(
+                                        ed_gru, validar_grupo, obligatorio=c["req"]
+                                    )
+
                             if ed_id and ed_id_ok and id_estudiante_existe_otro(ed_id.strip(), u['id']):
-                                st.markdown('<div class="val-error">❌ Ese ID ya lo usa otro usuario</div>', unsafe_allow_html=True)
+                                st.markdown('<div class="val-error">❌ Ese ID ya lo usa otro usuario</div>',
+                                            unsafe_allow_html=True)
                                 ed_id_unico = False
-                        else:
-                            ed_id = u['id_estudiante']; ed_id_ok = True; ed_id_unico = True
-                            ed_mat = u['matricula']; ed_mat_ok = True
-                            ed_car = u['carrera']; ed_car_ok = True
-                            ed_gru = u['grupo']; ed_gru_ok = True
+
+                        ed_lugar = u.get('lugar_asignado') or ""
+                        ed_lugar_ok = True
+                        if campos_rol.get("lugar_asignado"):
+                            ed_lugar = st.text_input(
+                                campos_rol["lugar_asignado"]["label"],
+                                value=u.get('lugar_asignado') or "",
+                                key=f"ed_lugar_{u['id']}",
+                                placeholder="Ej. A-12"
+                            )
+                            ed_lugar_ok = mostrar_validacion(
+                                ed_lugar, _validar_lugar_asignado, obligatorio=False
+                            )
 
                         st.markdown("##### 🔐 Cambiar contraseña *(opcional)*")
-                        ed_pass = st.text_input("Nueva contraseña", type="password", key=f"ed_p_{u['id']}")
-                        ed_pass2 = st.text_input("Confirmar contraseña", type="password", key=f"ed_p2_{u['id']}")
+                        ed_pass = st.text_input("Nueva contraseña", type="password",
+                                                 key=f"ed_p_{u['id']}")
+                        ed_pass2 = st.text_input("Confirmar contraseña", type="password",
+                                                  key=f"ed_p2_{u['id']}")
                         pass_ok, pass_msg = True, ""
                         if ed_pass:
                             if len(ed_pass) < 3:
@@ -2688,11 +2976,15 @@ def panel_admin():
                                 pass_ok = False; pass_msg = "Las contraseñas no coinciden"
                         if ed_pass:
                             if pass_ok:
-                                st.markdown('<div class="val-ok">✅ Contraseña válida</div>', unsafe_allow_html=True)
+                                st.markdown('<div class="val-ok">✅ Contraseña válida</div>',
+                                            unsafe_allow_html=True)
                             else:
-                                st.markdown(f'<div class="val-error">❌ {pass_msg}</div>', unsafe_allow_html=True)
+                                st.markdown(f'<div class="val-error">❌ {pass_msg}</div>',
+                                            unsafe_allow_html=True)
 
-                        todos_ok = ed_n_ok and ed_tel_ok and ed_id_ok and ed_mat_ok and ed_car_ok and ed_gru_ok and ed_id_unico and pass_ok
+                        todos_ok = (ed_n_ok and ed_tel_ok and ed_id_ok and ed_mat_ok
+                                    and ed_car_ok and ed_gru_ok and ed_id_unico
+                                    and ed_lugar_ok and pass_ok)
 
                         cx, cy = st.columns(2)
                         with cx:
@@ -2702,33 +2994,46 @@ def panel_admin():
                                     with st.spinner("💾 Guardando cambios..."):
                                         cambios = []
                                         if ed_nombre != u['nombre_completo']:
-                                            cambios.append(f"nombre: '{u['nombre_completo']}' → '{ed_nombre}'")
-                                        if ed_pass: cambios.append("contraseña cambiada")
+                                            cambios.append("nombre")
+                                        if ed_pass: cambios.append("contraseña")
+                                        if ed_lugar != (u.get('lugar_asignado') or ""):
+                                            cambios.append(f"lugar: {ed_lugar or '(vacío)'}")
+
                                         actualizar_usuario(
-                                            id_usuario=u['id'], nombre_completo=ed_nombre.strip(),
-                                            telefono=ed_tel.strip() or None,
-                                            matricula=ed_mat.strip() or None,
-                                            carrera=ed_car.strip() or None,
-                                            grupo=ed_gru.strip() or None,
-                                            id_estudiante=ed_id.strip() or None,
+                                            id_usuario=u['id'],
+                                            nombre_completo=ed_nombre.strip(),
+                                            telefono=ed_tel.strip() or None if ed_tel else None,
+                                            matricula=ed_mat.strip() or None if ed_mat else None,
+                                            carrera=ed_car.strip() or None if ed_car else None,
+                                            grupo=ed_gru.strip() or None if ed_gru else None,
+                                            id_estudiante=ed_id.strip() or None if ed_id else None,
                                             tipo_usuario=u['tipo_usuario'],
-                                            nueva_password=ed_pass if ed_pass else None)
+                                            nueva_password=ed_pass if ed_pass else None,
+                                            lugar_asignado=ed_lugar.strip() or None if ed_lugar else None,
+                                        )
                                         detalle = f"Usuario @{u['usuario']} editado"
                                         if cambios: detalle += " — " + "; ".join(cambios)
-                                        registrar_log(user['id'], "EDITAR_USUARIO", detalle, "Super_Usuarios", u['id'])
+                                        registrar_log(user['id'], "EDITAR_USUARIO", detalle,
+                                                      "Super_Usuarios", u['id'])
                                     st.session_state[f"editando_{u['id']}"] = False
-                                    limpiar_campos([f"ed_n_{u['id']}", f"ed_tel_{u['id']}", f"ed_id_{u['id']}",
-                                                    f"ed_mat_{u['id']}", f"ed_car_{u['id']}", f"ed_gru_{u['id']}",
+                                    limpiar_campos([f"ed_n_{u['id']}", f"ed_tel_{u['id']}",
+                                                    f"ed_id_{u['id']}", f"ed_mat_{u['id']}",
+                                                    f"ed_car_{u['id']}", f"ed_gru_{u['id']}",
+                                                    f"ed_lugar_{u['id']}",
                                                     f"ed_p_{u['id']}", f"ed_p2_{u['id']}"])
-                                    set_flash("success", f"✅ Usuario **{ed_nombre}** actualizado.")
+                                    set_flash("success",
+                                              f"✅ Usuario **{ed_nombre}** actualizado.")
                                     st.rerun()
                                 except Exception as e:
                                     st.error(f"Error: {e}")
                         with cy:
-                            if st.button("❌ Cancelar", use_container_width=True, key=f"ed_cancel_{u['id']}"):
+                            if st.button("❌ Cancelar", use_container_width=True,
+                                         key=f"ed_cancel_{u['id']}"):
                                 st.session_state[f"editando_{u['id']}"] = False
-                                limpiar_campos([f"ed_n_{u['id']}", f"ed_tel_{u['id']}", f"ed_id_{u['id']}",
-                                                f"ed_mat_{u['id']}", f"ed_car_{u['id']}", f"ed_gru_{u['id']}",
+                                limpiar_campos([f"ed_n_{u['id']}", f"ed_tel_{u['id']}",
+                                                f"ed_id_{u['id']}", f"ed_mat_{u['id']}",
+                                                f"ed_car_{u['id']}", f"ed_gru_{u['id']}",
+                                                f"ed_lugar_{u['id']}",
                                                 f"ed_p_{u['id']}", f"ed_p2_{u['id']}"])
                                 st.rerun()
                         st.markdown('</div>', unsafe_allow_html=True)
@@ -2754,10 +3059,11 @@ def panel_admin():
         offset = (pagina - 1) * por_pagina
 
         with st.spinner("📋 Cargando registros..."):
-            total = contar_registros_filtrados(fecha_desde, fecha_hasta, filtro_estado, filtro_tipo, buscar or None,
+            total = contar_registros_filtrados(fecha_desde, fecha_hasta, filtro_estado,
+                                              filtro_tipo, buscar or None,
                                               filtro_metodo=filtro_metodo)
-            registros = obtener_registros_paginado(fecha_desde, fecha_hasta, filtro_estado, filtro_tipo,
-                                                   buscar or None, offset, por_pagina,
+            registros = obtener_registros_paginado(fecha_desde, fecha_hasta, filtro_estado,
+                                                   filtro_tipo, buscar or None, offset, por_pagina,
                                                    filtro_metodo=filtro_metodo)
 
         if not registros:
@@ -2803,7 +3109,9 @@ def panel_admin():
                     st.caption(f"⬆️ Salida: {r['hora_salida'] or '—'}")
                     if r['evidencia_entrada'] or r['evidencia_salida']:
                         if st.button("📸 Ver evidencias", key=f"ver_ev_{r['id']}", use_container_width=True):
-                            st.session_state[f"mostrar_ev_{r['id']}"] = not st.session_state.get(f"mostrar_ev_{r['id']}", False)
+                            st.session_state[f"mostrar_ev_{r['id']}"] = not st.session_state.get(
+                                f"mostrar_ev_{r['id']}", False
+                            )
                     if st.session_state.get(f"mostrar_ev_{r['id']}", False):
                         if r['evidencia_entrada']:
                             st.markdown("**📷 Entrada:**")
@@ -2919,7 +3227,9 @@ def panel_admin():
 
             colores_accion = {
                 "INICIO_SESION": "#00ff88",
-                "CREAR_ALUMNO": "#C9A961", "CREAR_TRABAJADOR": "#C9A961", "CREAR_ADMIN": "#D7192D",
+                "CREAR_ALUMNO": "#C9A961", "CREAR_DOCENTE": "#C9A961",
+                "CREAR_ADMINISTRATIVO": "#C9A961",
+                "CREAR_TRABAJADOR": "#C9A961", "CREAR_ADMIN": "#D7192D",
                 "EDITAR_USUARIO": "#C9A961",
                 "DESACTIVAR_USUARIO": "#D7192D", "REACTIVAR_USUARIO": "#00ff88",
                 "ELIMINAR_USUARIO": "#7B1B2E", "ELIMINAR_VEHICULO": "#7B1B2E",
@@ -2933,10 +3243,13 @@ def panel_admin():
                 "SALIDA_MANUAL": "#ffaa00",
                 "VALIDAR_ENTRADA_MANUAL": "#00ff88",
                 "REGENERAR_QR": "#C9A961",
+                "ACTUALIZAR_PLACAS": "#C9A961",
+                "CAPACIDAD_ACTUALIZADA": "#0066B3",
+                "RECALCULAR_OCUPACION": "#0066B3",
             }
             for l in logs:
                 color = colores_accion.get(l['accion'], "#C9A961")
-                icono_rol = {'alumno': '🎓', 'trabajador': '👷', 'admin': '👑'}.get(l['rol_accion'], '👤')
+                icono_rol = _icono_rol(l['rol_accion'])
                 fecha_str = l['fecha'].strftime("%d/%m/%Y %H:%M:%S") if l['fecha'] else "N/A"
                 st.markdown(f"""
                     <div class="log-row" style="border-left-color: {color};">
@@ -2979,7 +3292,8 @@ def panel_admin():
                                 st.caption("📢 Mensaje general")
                         with c2:
                             if not m['leido']:
-                                if st.button("✅", key=f"leido_{m['id']}", help="Marcar como leído", use_container_width=True):
+                                if st.button("✅", key=f"leido_{m['id']}",
+                                             help="Marcar como leído", use_container_width=True):
                                     marcar_mensaje_leido(m['id'])
                                     st.rerun()
                         with st.expander("Ver contenido"):
@@ -3009,6 +3323,7 @@ def panel_admin():
             destinatario_tipo = st.radio(
                 "Destinatario",
                 ["📢 Todos los alumnos (broadcast)", "🎓 Un alumno específico",
+                 "📚 Un docente", "💼 Un administrativo",
                  "👷 Un trabajador", "👑 Un admin"],
                 horizontal=False, key="msg_dest_tipo"
             )
@@ -3017,16 +3332,21 @@ def panel_admin():
             if "Todos los alumnos" in destinatario_tipo:
                 destinatario_id = None
             else:
-                if "alumno" in destinatario_tipo:
-                    usuarios_dest = obtener_todos_usuarios("alumno", solo_activos=True)
-                elif "trabajador" in destinatario_tipo:
-                    usuarios_dest = obtener_todos_usuarios("trabajador", solo_activos=True)
-                else:
-                    usuarios_dest = obtener_todos_usuarios("admin", solo_activos=True)
+                mapa = {
+                    "alumno": "alumno",
+                    "docente": "docente",
+                    "administrativo": "administrativo",
+                    "trabajador": "trabajador",
+                    "admin": "admin",
+                }
+                rol_filtro = next((v for k, v in mapa.items()
+                                   if k in destinatario_tipo.lower()), None)
+                usuarios_dest = obtener_todos_usuarios(rol_filtro, solo_activos=True) if rol_filtro else []
 
                 opciones = {f"{u['nombre_completo']} (@{u['usuario']})": u['id'] for u in usuarios_dest}
                 if opciones:
-                    sel = st.selectbox("Selecciona el destinatario", list(opciones.keys()), key="msg_dest_sel")
+                    sel = st.selectbox("Selecciona el destinatario", list(opciones.keys()),
+                                       key="msg_dest_sel")
                     destinatario_id = opciones[sel]
                 else:
                     st.warning("No hay usuarios disponibles.")
@@ -3055,7 +3375,8 @@ def panel_admin():
         st.markdown("### 🚗 Vehículos registrados")
         st.caption("Busca un vehículo para ver su historial detallado.")
 
-        buscar_veh = st.text_input("🔍 Buscar por placas, alumno o matrícula", key="veh_buscar_admin").strip()
+        buscar_veh = st.text_input("🔍 Buscar por placas, alumno, matrícula o lugar",
+                                    key="veh_buscar_admin").strip()
 
         with st.spinner("🔎 Buscando vehículos..."):
             vehiculos = buscar_vehiculos_admin(buscar_veh if buscar_veh else None, limite=50)
@@ -3066,16 +3387,22 @@ def panel_admin():
             st.caption(f"**{len(vehiculos)}** vehículo(s)")
             for v in vehiculos:
                 icono = "🚗" if v['tipo'] == 'Auto' else "🏍️"
+                rol_ic = _icono_rol(v.get('rol', 'alumno'))
                 with st.container(border=True):
                     c1, c2 = st.columns([4, 1])
                     with c1:
                         st.markdown(f"**{icono} {v['placas']}** — {v['tipo']}")
-                        st.caption(f"Dueño: {v['nombre_completo']} (@{v['usuario']})")
+                        st.caption(f"Dueño: {rol_ic} {v['nombre_completo']} (@{v['usuario']})")
                         st.caption(f"Matrícula: {v['matricula'] or 'N/A'} | ID: {v['id_estudiante'] or 'N/A'} | Carrera: {v['carrera'] or 'N/A'}")
                         st.caption(f"Marca: {v['marca'] or 'N/A'} | Modelo: {v['modelo'] or 'N/A'} | Color: {v['color'] or 'N/A'}")
+                        if v.get('lugar_asignado'):
+                            st.caption(f"🅿️ Lugar asignado: {v['lugar_asignado']}")
                     with c2:
-                        if st.button("📜 Historial", key=f"hist_veh_{v['id']}", use_container_width=True):
-                            st.session_state[f"ver_hist_veh_{v['id']}"] = not st.session_state.get(f"ver_hist_veh_{v['id']}", False)
+                        if st.button("📜 Historial", key=f"hist_veh_{v['id']}",
+                                     use_container_width=True):
+                            st.session_state[f"ver_hist_veh_{v['id']}"] = not st.session_state.get(
+                                f"ver_hist_veh_{v['id']}", False
+                            )
                             st.rerun()
 
                     if st.session_state.get(f"ver_hist_veh_{v['id']}", False):
@@ -3116,15 +3443,18 @@ def panel_admin():
                                     textfont=dict(color=COLOR_CREMA, size=10),
                                 )])
                                 fig.update_layout(
-                                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                                    paper_bgcolor="rgba(0,0,0,0)",
+                                    plot_bgcolor="rgba(0,0,0,0)",
                                     font=dict(color=COLOR_CREMA, size=10),
                                     xaxis=dict(gridcolor="rgba(201,169,97,0.1)"),
                                     yaxis=dict(gridcolor="rgba(201,169,97,0.1)"),
                                     margin=dict(l=10, r=10, t=20, b=10), height=180,
                                     showlegend=False,
-                                    title=dict(text="Visitas por día", font=dict(color=COLOR_DORADO, size=12))
+                                    title=dict(text="Visitas por día",
+                                               font=dict(color=COLOR_DORADO, size=12))
                                 )
-                                st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+                                st.plotly_chart(fig, use_container_width=True,
+                                                config={"displayModeBar": False})
 
                             df_hist = pd.DataFrame([{
                                 'Fecha': h['hora_entrada'].strftime("%d/%m/%Y %H:%M") if h['hora_entrada'] else "",
@@ -3137,7 +3467,8 @@ def panel_admin():
                             } for h in historial[:30]])
                             st.dataframe(df_hist, use_container_width=True, hide_index=True)
 
-                            if st.button("❌ Cerrar historial", key=f"cerrar_hist_{v['id']}", use_container_width=True):
+                            if st.button("❌ Cerrar historial", key=f"cerrar_hist_{v['id']}",
+                                         use_container_width=True):
                                 st.session_state[f"ver_hist_veh_{v['id']}"] = False
                                 st.rerun()
 
@@ -3246,7 +3577,7 @@ def panel_admin():
         with st.expander("👤 Ver mi información"):
             st.write(f"**Usuario:** {user['usuario']}")
             st.write(f"**Nombre completo:** {user['nombre_completo']}")
-            st.write(f"**Rol:** {user['rol']}")
+            st.write(f"**Rol:** {_nombre_rol(user['rol'])}")
             st.write(f"**Tipo:** {user['tipo_usuario'] or 'N/A'}")
             st.write(f"**Teléfono:** {user['telefono'] or 'N/A'}")
             st.write(f"**Registrado:** {user['fecha_registro']}")
@@ -3259,13 +3590,13 @@ def panel_admin():
 # ============================================================
 if st.session_state.usuario is not None:
     rol = st.session_state.usuario['rol']
-    iconos = {'alumno': '🎓', 'trabajador': '👷', 'admin': '👑'}
+    icono = _icono_rol(rol)
 
     col_user, col_brand, col_salir = st.columns([3, 2, 1])
     with col_user:
         st.markdown(
             f"<div style='padding-top: 10px; color: #C9A961;'>"
-            f"<b>{iconos.get(rol, '👤')} @{st.session_state.usuario['usuario']}</b>"
+            f"<b>{icono} @{st.session_state.usuario['usuario']}</b>"
             f"</div>", unsafe_allow_html=True)
     with col_brand:
         st.markdown(mostrar_marca_cudy(), unsafe_allow_html=True)
@@ -3277,7 +3608,11 @@ if st.session_state.usuario is None:
     pantalla_login()
 else:
     rol = st.session_state.usuario['rol']
-    if rol == 'alumno': panel_alumno()
-    elif rol == 'trabajador': panel_trabajador()
-    elif rol == 'admin': panel_admin()
-    else: st.error(f"Rol desconocido: {rol}")
+    if rol in ('alumno', 'docente', 'administrativo'):
+        panel_alumno()
+    elif rol == 'trabajador':
+        panel_trabajador()
+    elif rol == 'admin':
+        panel_admin()
+    else:
+        st.error(f"Rol desconocido: {rol}")
