@@ -645,9 +645,8 @@ def obtener_todos_los_registros(fecha_desde=None, fecha_hasta=None):
 
     return ejecutar_query(
         f"""SELECT r.id, r.hora_entrada, r.hora_salida, r.estado,
-                  r.evidencia_entrada, r.evidencia_salida,
                   v.tipo, v.placas, v.marca, v.modelo,
-                  u.nombre_completo, u.matricula, u.carrera, u.grupo, u.id_estudiante
+                  u.nombre_completo, u.rol, u.matricula, u.carrera, u.grupo, u.id_estudiante
            FROM Super_Registros r
            INNER JOIN Super_Vehiculos v ON r.id_vehiculo = v.id
            INNER JOIN Super_Usuarios u ON r.id_usuario = u.id
@@ -952,6 +951,46 @@ def actualizar_telefono_usuario(id_usuario, telefono):
                    (telefono, id_usuario))
     limpiar_cache()
     return True, "Teléfono actualizado correctamente."
+
+
+def lugar_asignado_en_uso(lugar, excluir_id=None):
+    """Devuelve {'id', 'nombre_completo'} del usuario ACTIVO que ya tiene ese lugar, o None."""
+    limpio = str(lugar or "").strip().upper()
+    if not limpio:
+        return None
+    res = ejecutar_query(
+        """SELECT TOP 1 id, nombre_completo FROM Super_Usuarios
+           WHERE activo = 1 AND UPPER(LTRIM(RTRIM(lugar_asignado))) = ? AND id <> ?""",
+        (limpio, int(excluir_id or 0)), fetch=True
+    )
+    return res[0] if res else None
+
+
+_CAMPOS_COMPLETABLES = ("id_estudiante", "matricula", "carrera", "grupo")
+
+
+def completar_datos_perfil(id_usuario, datos):
+    """Llena SOLO los campos del perfil que están vacíos (nunca pisa un dato existente).
+    datos: dict con id_estudiante, matricula, carrera y/o grupo. Devuelve (ok, mensaje)."""
+    datos = datos or {}
+    for campo in _CAMPOS_COMPLETABLES:
+        if campo == "id_estudiante" and str(datos.get(campo) or "").strip():
+            if id_estudiante_existe(str(datos[campo]).strip()):
+                return False, "Ese ID / número de empleado ya está en uso."
+    guardados = 0
+    for campo in _CAMPOS_COMPLETABLES:          # nombres de columna fijos: no viene del usuario
+        valor = str(datos.get(campo) or "").strip()
+        if not valor:
+            continue
+        ejecutar_query(
+            f"UPDATE Super_Usuarios SET {campo} = ? WHERE id = ? AND ISNULL({campo}, '') = ''",
+            (valor, id_usuario)
+        )
+        guardados += 1
+    if not guardados:
+        return False, "No hay datos para guardar."
+    limpiar_cache()
+    return True, "Datos guardados correctamente."
 
 
 # =========================================================
