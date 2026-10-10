@@ -755,19 +755,76 @@ def _validar_entrada_manual(tiene_placas, placas, marca, modelo, color, tipo_veh
 # ============================================================
 # HELPERS: PDF
 # ============================================================
+# ------------------------------------------------------------
+# Texto seguro para las fuentes base del PDF (latin-1)
+# ------------------------------------------------------------
+_REEMPLAZOS_PDF = {
+    "—": "-", "–": "-", "−": "-", "“": '"', "”": '"', "„": '"',
+    "‘": "'", "’": "'", "‚": "'", "…": "...", "→": "->", "←": "<-",
+    "•": "-", "\u00a0": " ", "\r": " ", "\n": " ", "\t": " ",
+    "Ł": "L", "ł": "l", "Đ": "D", "đ": "d",
+}
+
+
+def _pdf_texto(v):
+    """Convierte cualquier valor a texto que las fuentes base del PDF pueden dibujar.
+    Rayas, comillas curvas y similares se sustituyen; emojis y símbolos sueltos se omiten
+    (antes salían como '?' o hacían fallar el PDF)."""
+    if v is None or (not isinstance(v, str) and pd.isna(v)):
+        return ""
+    t = str(v)
+    for a, b in _REEMPLAZOS_PDF.items():
+        t = t.replace(a, b)
+    salida = []
+    for ch in t:
+        try:
+            ch.encode("latin-1")
+            salida.append(ch)
+        except UnicodeEncodeError:
+            base = unicodedata.normalize("NFKD", ch).encode("ascii", "ignore").decode()
+            if base:
+                salida.append(base)
+            elif ch.isalpha():
+                salida.append("?")
+    return re.sub(r" {2,}", " ", "".join(salida)).strip()
+
+
+_LOGO_CACHE = {}
+
+
+def _logo_escudo_bytes():
+    """Escudo del colegio; se descarga una sola vez por sesión del servidor."""
+    if "b" in _LOGO_CACHE:
+        return _LOGO_CACHE["b"]
+    try:
+        datos = urllib.request.urlopen(LOGO_ESCUDO_URL, timeout=5).read()
+        _LOGO_CACHE["b"] = datos
+        return datos
+    except Exception:
+        return None
+
+
 def generar_pdf_reporte(df, titulo, subtitulo=""):
     class PDF(FPDF):
         def header(self):
             self.set_fill_color(123, 27, 46)
             self.rect(0, 0, 297, 22, "F")
+            x_texto = 10
+            logo = _logo_escudo_bytes()
+            if logo:
+                try:
+                    self.image(BytesIO(logo), x=10, y=3, w=16)
+                    x_texto = 30
+                except Exception:
+                    pass
             self.set_y(6)
-            self.set_x(10)
+            self.set_x(x_texto)
             self.set_font("Helvetica", "B", 12)
             self.set_text_color(201, 169, 97)
             self.cell(0, 6, "CUYPARK - Colegio Universitario de Yahualica", ln=1)
             self.set_font("Helvetica", "", 9)
             self.set_text_color(245, 240, 232)
-            self.set_x(10)
+            self.set_x(x_texto)
             self.cell(0, 5, f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}", ln=1)
             self.set_y(26)
 
@@ -775,72 +832,107 @@ def generar_pdf_reporte(df, titulo, subtitulo=""):
             self.set_y(-15)
             self.set_font("Helvetica", "I", 7)
             self.set_text_color(130, 130, 130)
-            self.cell(0, 5, f"Página {self.page_no()}", align="C")
+            self.cell(0, 5, f"Página {self.page_no()} de {{nb}}", align="C")
 
     pdf = PDF(orientation="L", unit="mm", format="A4")
+    pdf.alias_nb_pages()
+    pdf.set_auto_page_break(auto=False)
     pdf.add_page()
 
     pdf.set_font("Helvetica", "B", 16)
     pdf.set_text_color(123, 27, 46)
-    pdf.cell(0, 10, titulo, ln=1, align="C")
+    pdf.cell(0, 10, _pdf_texto(titulo), ln=1, align="C")
 
     if subtitulo:
         pdf.set_font("Helvetica", "I", 10)
         pdf.set_text_color(80, 80, 80)
-        pdf.cell(0, 6, subtitulo, ln=1, align="C")
+        pdf.cell(0, 6, _pdf_texto(subtitulo), ln=1, align="C")
     pdf.ln(3)
 
     page_width = 297 - 20
     cols = list(df.columns)[:14]
     df = df[cols]
-    n = len(cols)
+    encabezados = [_pdf_texto(c) for c in cols]
+    filas = [[_pdf_texto(row[c]) for c in cols] for _, row in df.iterrows()]
 
-    def _txt(v):
-        if v is None or (not isinstance(v, str) and pd.isna(v)):
-            return ""
-        return str(v).encode("latin-1", "replace").decode("latin-1")
+    LH_CUERPO, LH_ENC, PAD, MAX_LINEAS, LIMITE_Y = 3.4, 3.8, 0.9, 6, 192
 
-    pesos = []
-    for c in cols:
-        largo = max([len(_txt(c)) * 1.35] + [len(_txt(v)) for v in df[c].head(200)])
-        pesos.append(min(max(largo, 6), 32))
-    total_peso = sum(pesos)
-    widths = [page_width * p / total_peso for p in pesos]
+    # ---- Anchos: cada columna recibe lo que necesita; el texto largo se parte en líneas
+    pdf.set_font("Helvetica", "B", 8)
+    ancho_enc = [pdf.get_string_width(h) for h in encabezados]
+    palabra_enc = [max([pdf.get_string_width(p) for p in h.split()] or [0]) for h in encabezados]
+    pdf.set_font("Helvetica", "", 7)
+    natural, minimo, largo_prom = [], [], []
+    for i in range(len(cols)):
+        celdas = [f[i] for f in filas[:300]]
+        anchos = [pdf.get_string_width(t) for t in celdas] or [0]
+        palabras = [pdf.get_string_width(p) for t in celdas for p in t.split()] or [0]
+        natural.append(min(max(max(anchos), ancho_enc[i]), 55) + 3)
+        minimo.append(max(palabra_enc[i], min(max(palabras), 22)) + 3)
+        no_vacias = [len(t) for t in celdas if t]
+        largo_prom.append(sum(no_vacias) / len(no_vacias) if no_vacias else 0)
 
-    def _ajusta(texto, ancho):
-        if pdf.get_string_width(texto) <= ancho - 1.5:
-            return texto
-        while texto and pdf.get_string_width(texto + "..") > ancho - 1.5:
-            texto = texto[:-1]
-        return texto + ".."
-
-    def _encabezado():
-        pdf.set_fill_color(123, 27, 46)
-        pdf.set_text_color(255, 255, 255)
-        pdf.set_font("Helvetica", "B", 8)
-        pdf.set_x(10)
-        for i, c in enumerate(cols):
-            pdf.cell(widths[i], 7, _ajusta(_txt(c), widths[i]), border=1, align="C", fill=True)
-        pdf.ln()
-        pdf.set_font("Helvetica", "", 7)
-        pdf.set_text_color(40, 40, 40)
-
-    _encabezado()
-    fill = False
-    for _, row in df.iterrows():
-        if pdf.get_y() > 190:
-            pdf.add_page()
-            _encabezado()
-
-        if fill:
-            pdf.set_fill_color(245, 240, 232)
+    total_nat = sum(natural)
+    if total_nat <= page_width:
+        widths = [n + (page_width - total_nat) * n / total_nat for n in natural]
+    else:
+        base = [min(m, n) for m, n in zip(minimo, natural)]
+        resto = page_width - sum(base)
+        if resto <= 0:
+            widths = [page_width * b / sum(base) for b in base]
         else:
-            pdf.set_fill_color(255, 255, 255)
-        pdf.set_x(10)
-        for i, c in enumerate(cols):
-            pdf.cell(widths[i], 6, _ajusta(_txt(row[c]), widths[i]), border=1, align="C", fill=True)
-        pdf.ln()
-        fill = not fill
+            flex = [n - b for n, b in zip(natural, base)]
+            tf = sum(flex) or 1
+            widths = [b + resto * f / tf for b, f in zip(base, flex)]
+    alineacion = ["L" if p >= 25 else "C" for p in largo_prom]
+
+    def _lineas(texto, ancho, alto_linea):
+        if not texto:
+            return [""]
+        lineas = pdf.multi_cell(ancho, alto_linea, texto, dry_run=True, output="LINES", align="L")
+        lineas = list(lineas) or [""]
+        if len(lineas) > MAX_LINEAS:
+            lineas = lineas[:MAX_LINEAS]
+            ultima = lineas[-1].rstrip()
+            while ultima and pdf.get_string_width(ultima + "..") > ancho - 2:
+                ultima = ultima[:-1]
+            lineas[-1] = ultima + ".."
+        return lineas
+
+    def _fila(textos, encabezado=False, zebra=False):
+        lh = LH_ENC if encabezado else LH_CUERPO
+        pdf.set_font("Helvetica", "B" if encabezado else "", 8 if encabezado else 7)
+        celdas = [_lineas(t, w, lh) for t, w in zip(textos, widths)]
+        alto = max(len(c) for c in celdas) * lh + 2 * PAD
+        if pdf.get_y() + alto > LIMITE_Y and not encabezado:
+            pdf.add_page()
+            _fila(encabezados, encabezado=True)
+        y, x = pdf.get_y(), 10
+        for i, (lineas, w) in enumerate(zip(celdas, widths)):
+            pendiente = (not encabezado) and encabezados[i].lower() == "validado" \
+                and textos[i].strip().upper() == "NO"
+            if encabezado:
+                pdf.set_fill_color(123, 27, 46); pdf.set_draw_color(90, 15, 30)
+                pdf.set_text_color(255, 255, 255); estilo = "B"
+            elif pendiente:
+                pdf.set_fill_color(253, 226, 226); pdf.set_draw_color(110, 110, 110)
+                pdf.set_text_color(160, 15, 30); estilo = "B"
+            else:
+                pdf.set_fill_color(*((245, 240, 232) if zebra else (255, 255, 255)))
+                pdf.set_draw_color(110, 110, 110)
+                pdf.set_text_color(40, 40, 40); estilo = ""
+            pdf.rect(x, y, w, alto, "DF")
+            pdf.set_font("Helvetica", estilo, 8 if encabezado else 7)
+            pdf.set_xy(x, y + (alto - len(lineas) * lh) / 2)
+            pdf.multi_cell(w, lh, "\n".join(lineas), border=0,
+                           align="C" if encabezado else alineacion[i],
+                           new_x="RIGHT", new_y="TOP")
+            x += w
+        pdf.set_xy(10, y + alto)
+
+    _fila(encabezados, encabezado=True)
+    for n, fila in enumerate(filas):
+        _fila(fila, zebra=(n % 2 == 1))
 
     return bytes(pdf.output())
 
@@ -1266,15 +1358,12 @@ def generar_pdf_qr(user, vehiculo, qr_bytes):
         def header(self):
             self.set_fill_color(123, 27, 46)
             self.rect(0, 0, 210, 28, "F")
-            try:
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as _f:
-                    _f.write(urllib.request.urlopen(LOGO_ESCUDO_URL, timeout=5).read())
-                    _logo_path = _f.name
-                self.image(_logo_path, x=10, y=4, w=20)
-                try: os.unlink(_logo_path)
-                except Exception: pass
-            except Exception:
-                pass
+            logo = _logo_escudo_bytes()
+            if logo:
+                try:
+                    self.image(BytesIO(logo), x=10, y=4, w=20)
+                except Exception:
+                    pass
             self.set_y(6)
             self.set_x(35)
             self.set_font("Helvetica", "B", 10)
@@ -1323,7 +1412,7 @@ def generar_pdf_qr(user, vehiculo, qr_bytes):
     ]:
         pdf.cell(45, 6, etiqueta, border=0)
         pdf.set_font("Helvetica", "B", 10)
-        pdf.cell(0, 6, str(valor), ln=1)
+        pdf.cell(0, 6, _pdf_texto(valor), ln=1)
         pdf.set_font("Helvetica", "", 10)
 
     pdf.ln(4)
@@ -1342,7 +1431,7 @@ def generar_pdf_qr(user, vehiculo, qr_bytes):
         pdf.cell(45, 6, etiqueta, border=0)
         pdf.set_font("Helvetica", "B", 12 if es_placas else 10)
         if es_placas: pdf.set_text_color(123, 27, 46)
-        pdf.cell(0, 6, str(valor), ln=1)
+        pdf.cell(0, 6, _pdf_texto(valor), ln=1)
         pdf.set_font("Helvetica", "", 10)
         pdf.set_text_color(40, 40, 40)
 
@@ -3587,10 +3676,13 @@ def panel_admin():
                 'Validó admin': r['admin_nombre'] or "",
             } for r in registros])
 
+            rango_man = (f"Período: {fecha_desde.strftime('%d/%m/%Y')} - {fecha_hasta.strftime('%d/%m/%Y')}"
+                         if fecha_desde and fecha_hasta else "Período: Todo el historial")
+            if ver_solo_pendientes:
+                rango_man += " | Solo pendientes de validación"
             with st.spinner("Generando PDF..."):
                 pdf_data = generar_pdf_reporte(
-                    df_man, "Reporte de Entradas Manuales",
-                    f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+                    df_man, "Reporte de Entradas Manuales", rango_man
                 )
             st.download_button(
                 "📄 Descargar reporte PDF",
