@@ -1908,6 +1908,11 @@ def _verificar_alertas_programadas(user):
 SECCION_MANUALES = "🆘 Registros Manuales"
 
 
+def _firma_manuales(filas):
+    """Huella de las entradas sin validar: cambia si llega una, sale una o se valida una."""
+    return frozenset((r['id'], r['estado']) for r in filas)
+
+
 @st.fragment(run_every="15s")
 def _aviso_manuales_admin():
     """Toast + banner cuando hay entradas manuales que requieren validación."""
@@ -1915,6 +1920,18 @@ def _aviso_manuales_admin():
         sin_validar = obtener_manuales_sin_validar()
     except Exception:
         return
+
+    # Si el admin está viendo la lista y la base de datos ya cambió, se lo decimos
+    # (sin recargar solo, para no moverle la pantalla mientras revisa fotos).
+    # En una recarga completa la lista acaba de dibujarse, así que no se compara.
+    corrida_completa = st.session_state.pop("manuales_corrida_completa", False)
+    vista = st.session_state.get("manuales_firma_vista")
+    if (st.session_state.get("seccion_admin") == SECCION_MANUALES
+            and not corrida_completa and vista is not None
+            and _firma_manuales(sin_validar) != vista):
+        st.info("🔄 Hay cambios en los registros manuales: llegó, salió o se validó alguno.")
+        if st.button("Actualizar lista", key="btn_actualizar_manuales_aviso"):
+            st.rerun(scope="app")
 
     primera_vez = "manuales_avisados" not in st.session_state
     avisados = st.session_state.setdefault("manuales_avisados", set())
@@ -2680,6 +2697,7 @@ def panel_admin():
                 unsafe_allow_html=True)
     mostrar_flash()
     _verificar_alertas_programadas(user)
+    st.session_state["manuales_corrida_completa"] = True
     _aviso_manuales_admin()
 
     # Navegación pedida desde el aviso: debe aplicarse ANTES de crear el radio
@@ -3636,6 +3654,11 @@ def panel_admin():
 
     elif seccion == "🆘 Registros Manuales":
         st.markdown("### 🆘 Registros manuales (entradas sin identificación)")
+        col_refrescar, _relleno = st.columns([1, 3])
+        with col_refrescar:
+            if st.button("🔄 Actualizar", key="btn_refrescar_manuales",
+                         use_container_width=True):
+                st.rerun()
         pendientes = contar_registros_manuales_pendientes()
         if pendientes:
             st.error(f"⚠️ **{pendientes}** registro(s) sin validar.")
@@ -3648,6 +3671,12 @@ def panel_admin():
 
         ver_solo_pendientes = st.checkbox("Ver solo pendientes de validación",
                                            value=bool(pendientes))
+
+        try:
+            st.session_state["manuales_firma_vista"] = _firma_manuales(
+                obtener_manuales_sin_validar())
+        except Exception:
+            pass
 
         with st.spinner("Cargando registros manuales..."):
             registros = obtener_registros_manuales(
