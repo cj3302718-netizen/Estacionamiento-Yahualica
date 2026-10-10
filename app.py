@@ -88,7 +88,7 @@ st.markdown("""
 
     .titulo-principal { text-align:center; color:#C9A961; font-size:2rem; font-weight:800; margin-bottom:0; letter-spacing:2px; animation: fadeInUp .8s ease-out; }
     .subtitulo { text-align:center; color:#A89968; font-size:.9rem; margin-top:-8px; margin-bottom:20px; animation: fadeInUp 1s ease-out .2s both; }
-    .panel-header { background: linear-gradient(135deg, #7B1B2E 0%, #D7192D 100%); padding:14px 16px; border-radius:12px; color:#FFF; font-weight:700; margin-bottom:16px; font-size:1.05rem; line-height:1.3; box-shadow:0 0 20px rgba(123,27,46,.4); animation: fadeInUp .6s ease-out; }
+    .panel-header { background: linear-gradient(135deg, #7B1B2E 0%, #9B2335 100%); padding:14px 16px; border-radius:12px; color:#FFF; font-weight:700; margin-bottom:16px; font-size:1.05rem; line-height:1.3; box-shadow:0 0 20px rgba(123,27,46,.4); animation: fadeInUp .6s ease-out; }
     .contador-card { background:#1a0a0f; border:2px solid #C9A961; border-radius:16px; padding:14px; text-align:center; box-shadow:0 0 15px rgba(201,169,97,.35); margin-bottom:10px; animation: fadeInScale .6s ease-out; transition: transform .3s, box-shadow .3s; }
     .contador-card:hover { transform: translateY(-4px); box-shadow:0 0 30px rgba(201,169,97,.6); }
     .contador-card h4 { color:#A89968; font-size:.75rem; text-transform:uppercase; letter-spacing:1px; margin:0; }
@@ -109,12 +109,12 @@ st.markdown("""
     .kpi-card .kpi-label { color:#A89968; font-size:.75rem; text-transform:uppercase; letter-spacing:.8px; }
     .kpi-card .kpi-value { font-size:1.7rem; font-weight:800; color:#F5F0E8; margin-top:2px; }
     .kpi-card .kpi-delta { font-size:.8rem; margin-top:2px; }
-    .delta-up { color:#00ff88; } .delta-down { color:#ff6666; } .delta-neutral { color:#A89968; }
-    .bienvenida-card { background: linear-gradient(135deg, #1a3a1a 0%, #2a5028 100%); border:2px solid #00ff88; border-radius:16px; padding:18px; text-align:center; margin-bottom:16px; box-shadow:0 0 20px rgba(0,255,136,.3); animation: fadeInScale .6s ease-out; }
-    .bienvenida-card h3 { color:#00ff88; margin:0; font-size:1.1rem; }
+    .delta-up { color:#3DDC97; } .delta-down { color:#ff6666; } .delta-neutral { color:#A89968; }
+    .bienvenida-card { background: linear-gradient(135deg, #1a3a1a 0%, #2a5028 100%); border:2px solid #3DDC97; border-radius:16px; padding:18px; text-align:center; margin-bottom:16px; box-shadow:0 0 20px rgba(61,220,151,.3); animation: fadeInScale .6s ease-out; }
+    .bienvenida-card h3 { color:#3DDC97; margin:0; font-size:1.1rem; }
     .bienvenida-card p { color:#fff; margin:6px 0 0 0; font-size:.95rem; }
-    .bienvenida-card .placas { color:#00ff88; font-weight:800; font-size:1.3rem; }
-    .val-ok { color:#00ff88; font-size:.8rem; margin-top:-8px; margin-bottom:8px; animation: fadeInUp .3s ease-out; }
+    .bienvenida-card .placas { color:#3DDC97; font-weight:800; font-size:1.3rem; }
+    .val-ok { color:#3DDC97; font-size:.8rem; margin-top:-8px; margin-bottom:8px; animation: fadeInUp .3s ease-out; }
     .val-error { color:#ff5555; font-size:.8rem; margin-top:-8px; margin-bottom:8px; animation: fadeInUp .3s ease-out; }
     .logo-medallon { display:inline-block; background: radial-gradient(circle at 30% 30%, #FFF 0%, #F5F0E8 60%, #E8DFD0 100%); border-radius:50%; padding:6px; border:3px solid #C9A961; box-shadow:0 0 30px rgba(201,169,97,.6), 0 0 60px rgba(123,27,46,.4); margin-bottom:16px; animation: pulse 3s ease-in-out infinite; }
     .logo-medallon img { width:130px; height:130px; border-radius:50%; display:block; object-fit:cover; }
@@ -129,15 +129,17 @@ st.markdown("""
     .stButton > button { transition: all .25s ease !important; position: relative; overflow: hidden; }
     .stButton > button:hover { transform: translateY(-2px); box-shadow:0 6px 20px rgba(201,169,97,.4) !important; }
     .stButton > button:active { transform: translateY(0); }
-    .stButton > button[kind="primary"] { background: linear-gradient(135deg, #7B1B2E 0%, #D7192D 100%) !important; border:none !important; }
-    .stButton > button[kind="primary"]:hover { background: linear-gradient(135deg, #D7192D 0%, #7B1B2E 100%) !important; }
+    .stButton > button[kind="primary"], button[kind="primaryFormSubmit"],
+    [data-testid="stBaseButton-primary"], [data-testid="stBaseButton-primaryFormSubmit"] { background: linear-gradient(135deg, #7B1B2E 0%, #9B2335 100%) !important; border:1px solid rgba(201,169,97,.55) !important; color:#F5F0E8 !important; }
+    .stButton > button[kind="primary"]:hover, button[kind="primaryFormSubmit"]:hover,
+    [data-testid="stBaseButton-primary"]:hover, [data-testid="stBaseButton-primaryFormSubmit"]:hover { background: linear-gradient(135deg, #9B2335 0%, #7B1B2E 100%) !important; border-color:#C9A961 !important; }
     .stTextInput > div > div > input:focus, .stTextArea > div > div > textarea:focus { border-color:#C9A961 !important; box-shadow:0 0 0 3px rgba(201,169,97,.2), 0 0 15px rgba(201,169,97,.4) !important; }
     div[data-testid="stToast"] { animation: slideInRight .4s ease-out !important; }
     div[data-testid="stDecoration"] { background: linear-gradient(90deg, #7B1B2E 0%, #C9A961 50%, #D7192D 100%) !important; height:3px !important; animation: shimmer 2s linear infinite; background-size:200% 100%; }
     .alert-badge { display:inline-block; padding:3px 10px; border-radius:12px; font-size:.72rem; font-weight:700; letter-spacing:.5px; animation: pulseAlert 2s ease-in-out infinite; }
     .alert-badge.critico { background: rgba(215,25,45,.2); color:#ff4444; border:1px solid #ff4444; box-shadow:0 0 10px rgba(215,25,45,.5); }
-    .alert-badge.advertencia { background: rgba(255,170,0,.2); color:#ffaa00; border:1px solid #ffaa00; box-shadow:0 0 10px rgba(255,170,0,.4); }
-    .alert-badge.ok { background: rgba(0,255,136,.15); color:#00ff88; border:1px solid #00ff88; }
+    .alert-badge.advertencia { background: rgba(255,138,61,.2); color:#FF8A3D; border:1px solid #FF8A3D; box-shadow:0 0 10px rgba(255,138,61,.4); }
+    .alert-badge.ok { background: rgba(61,220,151,.15); color:#3DDC97; border:1px solid #3DDC97; }
     .alert-card { background: linear-gradient(135deg, #2a0a0f 0%, #1a0505 100%); border:2px solid #ff4444; border-radius:12px; padding:12px 14px; margin-bottom:10px; animation: fadeInScale .5s ease-out; box-shadow:0 0 15px rgba(215,25,45,.3); }
 
     @media (max-width: 768px) {
@@ -359,7 +361,7 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
 
             st.markdown(
                 f"<div style='margin-top:10px; padding:10px 14px; "
-                f"background:linear-gradient(135deg,#7B1B2E,#D7192D); "
+                f"background:linear-gradient(135deg,#7B1B2E,#9B2335); "
                 f"border-radius:10px; display:inline-block;'>"
                 f"<b style='color:#C9A961; font-size:1.15rem; letter-spacing:1px;'>"
                 f"{vehiculo['tipo']} — {vehiculo['placas']}</b>"
@@ -1705,7 +1707,7 @@ def _contadores_alumno():
                 disp, cap, pct, nivel = _estado_ocupacion(e)
                 extra = {
                     'lleno': '<div style="color:#ff6b6b; font-weight:700;">🚫 LLENO</div>',
-                    'alto': '<div style="color:#ffc107; font-weight:700;">⚠️ Casi lleno</div>',
+                    'alto': '<div style="color:#FF8A3D; font-weight:700;">⚠️ Casi lleno</div>',
                     'ok': '',
                 }[nivel]
                 st.markdown(
@@ -2403,7 +2405,7 @@ def panel_alumno():
                 fecha_entrada = h['hora_entrada'].strftime("%d/%m/%Y %H:%M") if h['hora_entrada'] else "N/A"
                 fecha_salida = h['hora_salida'].strftime("%d/%m/%Y %H:%M") if h['hora_salida'] else None
                 icono = "🚗" if h['tipo'] == 'Auto' else "🏍️"
-                estado_color = "#00ff88" if h['estado'] == 'DENTRO' else "#A89968"
+                estado_color = "#3DDC97" if h['estado'] == 'DENTRO' else "#A89968"
                 estado_txt = "🟢 DENTRO" if h['estado'] == 'DENTRO' else "🔴 COMPLETADA"
 
                 if fecha_salida:
@@ -2798,7 +2800,7 @@ def panel_admin():
 
                     fig_comp = go.Figure(data=[
                         go.Bar(name='Activos', x=df_comp['Rol'], y=df_comp['Activos'],
-                               marker_color='#00ff88', text=df_comp['Activos'], textposition='outside'),
+                               marker_color='#3DDC97', text=df_comp['Activos'], textposition='outside'),
                         go.Bar(name='Inactivos', x=df_comp['Rol'], y=df_comp['Inactivos'],
                                marker_color='#D7192D', text=df_comp['Inactivos'], textposition='outside'),
                     ])
@@ -3297,22 +3299,22 @@ def panel_admin():
             st.markdown("---")
 
             colores_accion = {
-                "INICIO_SESION": "#00ff88",
+                "INICIO_SESION": "#3DDC97",
                 "CREAR_ALUMNO": "#C9A961", "CREAR_DOCENTE": "#C9A961",
                 "CREAR_ADMINISTRATIVO": "#C9A961",
                 "CREAR_TRABAJADOR": "#C9A961", "CREAR_ADMIN": "#D7192D",
                 "EDITAR_USUARIO": "#C9A961",
-                "DESACTIVAR_USUARIO": "#D7192D", "REACTIVAR_USUARIO": "#00ff88",
+                "DESACTIVAR_USUARIO": "#D7192D", "REACTIVAR_USUARIO": "#3DDC97",
                 "ELIMINAR_USUARIO": "#7B1B2E", "ELIMINAR_VEHICULO": "#7B1B2E",
                 "CREAR_VEHICULO": "#C9A961",
-                "REGISTRAR_ENTRADA": "#00ff88", "REGISTRAR_SALIDA": "#C9A961",
-                "DESBLOQUEAR_USUARIO": "#00ff88",
+                "REGISTRAR_ENTRADA": "#3DDC97", "REGISTRAR_SALIDA": "#C9A961",
+                "DESBLOQUEAR_USUARIO": "#3DDC97",
                 "CAMBIAR_PASSWORD": "#C9A961",
                 "ACTUALIZAR_TELEFONO": "#C9A961",
                 "ENVIAR_MENSAJE": "#0066B3",
-                "ENTRADA_MANUAL": "#ffaa00",
-                "SALIDA_MANUAL": "#ffaa00",
-                "VALIDAR_ENTRADA_MANUAL": "#00ff88",
+                "ENTRADA_MANUAL": "#FF8A3D",
+                "SALIDA_MANUAL": "#FF8A3D",
+                "VALIDAR_ENTRADA_MANUAL": "#3DDC97",
                 "REGENERAR_QR": "#C9A961",
                 "ACTUALIZAR_PLACAS": "#C9A961",
                 "CAPACIDAD_ACTUALIZADA": "#0066B3",
