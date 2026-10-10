@@ -1817,10 +1817,6 @@ def _verificar_alertas_programadas(user):
 SECCION_MANUALES = "🆘 Registros Manuales"
 
 
-def _ir_a_registros_manuales():
-    st.session_state["seccion_admin"] = SECCION_MANUALES
-
-
 @st.fragment(run_every="15s")
 def _aviso_manuales_admin():
     """Toast + banner cuando hay entradas manuales que requieren validación."""
@@ -1856,8 +1852,10 @@ def _aviso_manuales_admin():
         f"({ya_salieron} ya salieron y esperan tu validación)."
     )
     if st.session_state.get("seccion_admin") != SECCION_MANUALES:
-        if st.button("Ir a Registros Manuales", key="btn_ir_manuales",
-                     on_click=_ir_a_registros_manuales):
+        if st.button("Ir a Registros Manuales", key="btn_ir_manuales"):
+            # Se guarda el destino y se recarga TODA la app; el radio lo aplica
+            # al dibujarse (ver panel_admin).
+            st.session_state["nav_pendiente"] = SECCION_MANUALES
             st.rerun(scope="app")
 
 
@@ -2592,6 +2590,10 @@ def panel_admin():
     mostrar_flash()
     _verificar_alertas_programadas(user)
     _aviso_manuales_admin()
+
+    # Navegación pedida desde el aviso: debe aplicarse ANTES de crear el radio
+    if "nav_pendiente" in st.session_state:
+        st.session_state["seccion_admin"] = st.session_state.pop("nav_pendiente")
 
     seccion = st.radio(
         "Sección:",
