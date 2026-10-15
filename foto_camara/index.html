@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<!-- CÁMARA DE FOTO: el trabajador toma la foto de evidencia con un botón (carpeta foto_camara/) -->
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cámara de foto</title>
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; color: #f5f0e8;
+               font-family: "Source Sans Pro", -apple-system, "Segoe UI", sans-serif; }
+  #wrap { position: relative; width: 100%; max-width: 640px; margin: 0 auto;
+          aspect-ratio: 4 / 3; background: #111; border-radius: 12px; overflow: hidden; }
+  video, #prev { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  #prev { display: none; }
+  #msg { position: absolute; left: 0; right: 0; top: 0; padding: 8px 12px; font-size: 14px;
+         font-weight: 600; background: rgba(0, 0, 0, .6); z-index: 2; }
+  #barra { display: flex; gap: 8px; max-width: 640px; margin: 8px auto 0; }
+  button { flex: 1; padding: 11px 10px; border: 0; border-radius: 10px; font-size: 15px;
+           font-weight: 700; cursor: pointer; color: #fff; background: #D7192D; }
+  button.sec { background: #3a3a3a; flex: 0 0 auto; }
+  button:disabled { opacity: .45; cursor: default; }
+  #err { display: none; padding: 12px; margin-top: 8px; border-radius: 10px; font-size: 14px;
+         background: rgba(215, 25, 45, .25); border: 1px solid #D7192D; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <video id="v" playsinline muted autoplay></video>
+  <img id="prev" alt="Foto tomada">
+  <div id="msg">Iniciando cámara…</div>
+</div>
+<div id="barra">
+  <button id="cam" class="sec" type="button" style="display:none">🔄 Cambiar</button>
+  <button id="tomar" type="button" disabled>📸 Tomar foto</button>
+</div>
+<div id="err"></div>
+<canvas id="c" style="display:none"></canvas>
+
+<script>
+(function () {
+  var iniciado = false, flujo = null, tomada = false;
+  var modo = 'environment';
+  try { modo = localStorage.getItem('cuypark_cam') || 'environment'; } catch (e) {}
+  if (modo !== 'user' && modo !== 'environment') { modo = 'environment'; }
+
+  var $ = function (id) { return document.getElementById(id); };
+  var v = $('v'), c = $('c');
+
+  function post(type, data) {
+    var m = { isStreamlitMessage: true, type: type };
+    for (var k in data) { m[k] = data[k]; }
+    window.parent.postMessage(m, '*');
+  }
+  function altura() { post('streamlit:setFrameHeight', { height: document.body.scrollHeight + 8 }); }
+
+  window.addEventListener('message', function (e) {
+    var d = e.data || {};
+    if (d.type === 'streamlit:render' && !iniciado) { iniciado = true; arrancar(); }
+  });
+  post('streamlit:componentReady', { apiVersion: 1 });
+  altura();
+  window.addEventListener('resize', altura);
+  window.addEventListener('pagehide', detener);
+
+  function msg(t) { $('msg').textContent = t; }
+  function error(t) {
+    msg('⚠️ Cámara no disponible');
+    $('err').style.display = 'block'; $('err').textContent = t; altura();
+  }
+  function detener() {
+    if (flujo) { flujo.getTracks().forEach(function (t) { t.stop(); }); flujo = null; }
+  }
+
+  function pedir(fm) {
+    return navigator.mediaDevices.getUserMedia({
+      video: { facingMode: fm, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+  }
+  function abrirCamara(m) {
+    return pedir({ exact: m }).catch(function () { return pedir({ ideal: m }); });
+  }
+
+  function arrancar() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      error('Este navegador no permite usar la cámara. Usa Chrome, Edge o Safari actualizados.');
+      return;
+    }
+    detener();
+    $('err').style.display = 'none';
+    $('prev').style.display = 'none';
+    v.style.display = 'block';
+    abrirCamara(modo).then(function (stream) {
+      flujo = stream;
+      v.srcObject = stream;
+      var p = v.play(); if (p && p.catch) { p.catch(function () {}); }
+      tomada = false;
+      $('tomar').disabled = false;
+      $('tomar').textContent = '📸 Tomar foto';
+      msg(modo === 'environment' ? '📷 Cámara trasera' : '🤳 Cámara frontal');
+      navigator.mediaDevices.enumerateDevices().then(function (ds) {
+        var n = ds.filter(function (d) { return d.kind === 'videoinput'; }).length;
+        $('cam').style.display = n > 1 ? 'block' : 'none';
+      }).catch(function () { $('cam').style.display = 'block'; });
+      altura();
+    }).catch(function (err) {
+      error('No se pudo abrir la cámara (' + (err && err.name ? err.name : err) +
+            '). Da permiso de cámara a este sitio y recarga la página.');
+    });
+  }
+
+  $('cam').addEventListener('click', function () {
+    if (tomada) { return; }
+    modo = (modo === 'environment') ? 'user' : 'environment';
+    try { localStorage.setItem('cuypark_cam', modo); } catch (e) {}
+    arrancar();
+  });
+
+  $('tomar').addEventListener('click', function () {
+    if (tomada) {                                   // "Repetir": se descarta la foto
+      post('streamlit:setComponentValue', { value: null, dataType: 'json' });
+      arrancar();
+      return;
+    }
+    if (!v.videoWidth) { return; }
+    var w = Math.min(960, v.videoWidth);
+    var h = Math.round(v.videoHeight * w / v.videoWidth);
+    c.width = w; c.height = h;
+    c.getContext('2d').drawImage(v, 0, 0, w, h);
+    var url = c.toDataURL('image/jpeg', 0.82);
+    $('prev').src = url;
+    $('prev').style.display = 'block';
+    v.style.display = 'none';
+    detener();
+    tomada = true;
+    $('cam').style.display = 'none';
+    $('tomar').textContent = '🔁 Repetir foto';
+    msg('✅ Foto tomada');
+    post('streamlit:setComponentValue', {
+      value: { foto: url.split(',')[1], ts: Date.now() }, dataType: 'json' });
+  });
+})();
+</script>
+</body>
+</html>
