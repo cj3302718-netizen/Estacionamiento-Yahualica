@@ -168,6 +168,44 @@ try:
 except Exception:
     _qr_scanner_comp = None
 
+# ============================================================
+# CÁMARA DE FOTO (reemplaza a st.camera_input, que no deja elegir trasera/frontal)
+# ============================================================
+class _FotoCapturada:
+    """Imita al UploadedFile de st.camera_input: solo se usa .getvalue()."""
+    def __init__(self, data):
+        self._data = data
+
+    def getvalue(self):
+        return self._data
+
+
+try:
+    import streamlit.components.v1 as _components_foto
+    _FOTO_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "foto_camara")
+    if os.path.isfile(os.path.join(_FOTO_DIR, "index.html")):
+        _foto_comp = _components_foto.declare_component("cuypark_foto_camara", path=_FOTO_DIR)
+    else:
+        _foto_comp = None
+except Exception:
+    _foto_comp = None
+
+
+def camara_foto(label, key=None):
+    """Devuelve un objeto con .getvalue() (bytes JPEG) o None si aún no hay foto.
+    Usa la cámara trasera por defecto, con botón para cambiar. Si el componente
+    no está disponible, cae al st.camera_input normal."""
+    if _foto_comp is None:
+        return st.camera_input(label, key=key)
+    st.markdown(f"**{label}**")
+    res = _foto_comp(key=key, default=None)
+    if isinstance(res, dict) and res.get("foto"):
+        data = base64_a_bytes(res["foto"])
+        if data:
+            return _FotoCapturada(data)
+    return None
+
+
 SEGUNDOS_ESPERA_FOTO = 5
 
 if WEBRTC_DISPONIBLE:
@@ -387,14 +425,14 @@ def _mostrar_datos_qr_escaneado(user, qr_raw):
         st.markdown(f"### 📸 Foto de evidencia — {accion}")
         st.image(foto_auto, caption="Foto tomada automáticamente", use_container_width=True)
         with st.expander("🔁 Tomar otra foto manualmente"):
-            foto_manual = st.camera_input(
+            foto_manual = camara_foto(
                 "📸 Nueva foto del vehículo",
                 key=f"cam_evidencia_qr_manual_{vehiculo['id']}_{accion}"
             )
         if foto_manual:
             foto_bytes = foto_manual.getvalue()
     else:
-        foto_evidencia = st.camera_input(
+        foto_evidencia = camara_foto(
             "📸 Foto del vehículo (obligatoria)",
             key=f"cam_evidencia_qr_{vehiculo['id']}_{accion}"
         )
@@ -589,7 +627,7 @@ def _seccion_escaner_qr(user):
                 video_processor_factory=QRScannerProcessor,
                 media_stream_constraints={
                     "video": {
-                        "facingMode": "environment",
+                        "facingMode": {"ideal": "environment"},
                         "width": {"ideal": 640},
                         "height": {"ideal": 480},
                         "frameRate": {"ideal": 15},
@@ -668,7 +706,7 @@ def _seccion_escaner_qr(user):
             with col_a: marca_man = st.text_input("Marca (opcional)", key="em_marca")
             with col_b: modelo_man = st.text_input("Modelo (opcional)", key="em_modelo")
             with col_c: color_man = st.text_input("Color (opcional)", key="em_color")
-            foto_man = st.camera_input("📸 Foto de evidencia (obligatoria)", key="em_foto")
+            foto_man = camara_foto("📸 Foto de evidencia (obligatoria)", key="em_foto")
 
             enviado = st.form_submit_button("🆘 Registrar entrada manual",
                                               type="primary", use_container_width=True)
@@ -2181,7 +2219,7 @@ def _render_lista_vehiculos_dentro(user):
                     st.rerun()
 
             if st.session_state.get(f"sal_manual_activo_{m['id_registro']}", False):
-                foto_sal = st.camera_input(
+                foto_sal = camara_foto(
                     f"📸 Evidencia de salida — {m['placas'] or m['nombre_visitante']}",
                     key=f"cam_sal_man_{m['id_registro']}"
                 )
@@ -2276,7 +2314,7 @@ def _render_lista_vehiculos_dentro(user):
 
         if st.session_state.get(f"salida_rapida_{v['id_registro']}", False):
             st.markdown("#### 📸 Evidencia de salida")
-            foto_sal = st.camera_input(f"Evidencia — {v['placas']}", key=f"cam_sal_{v['id_registro']}")
+            foto_sal = camara_foto(f"Evidencia — {v['placas']}", key=f"cam_sal_{v['id_registro']}")
             c1, c2 = st.columns(2)
             with c1:
                 if st.button("✅ Confirmar", key=f"conf_sal_{v['id_registro']}",
